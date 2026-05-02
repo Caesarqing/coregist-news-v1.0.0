@@ -1,0 +1,18 @@
+{
+  "name": "@coregist/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api-paths": "./src/api-paths.ts",
+    "./auth": "./src/auth.ts",
+    "./user": "./src/user.ts",
+    "./news": "./src/news.ts",
+    "./tracking": "./src/tracking.ts",
+    "./ai": "./src/ai.ts",
+    "./agents": "./src/agents.ts",
+    "./skills": "./src/skills.ts"
+  }
+}

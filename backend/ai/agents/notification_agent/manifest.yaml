@@ -1,0 +1,14 @@
+{
+  "id": "notification_agent",
+  "name": "通知代理",
+  "agent_type": "notification",
+  "enabled": true,
+  "description": "负责用户通知与推送。",
+  "version": "1.0.0",
+  "llm_profile": "mock-notification",
+  "available_skills": ["email_sender", "app_notifier"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "evaluation_agent",
+  "name": "多维评价代理",
+  "agent_type": "evaluation",
+  "enabled": true,
+  "description": "保留兼容，用于承接历史配置。",
+  "version": "1.0.0",
+  "llm_profile": "review",
+  "available_skills": ["knowledge_graph_query", "social_media_monitor"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

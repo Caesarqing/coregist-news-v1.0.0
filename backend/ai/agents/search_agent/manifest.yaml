@@ -1,0 +1,14 @@
+{
+  "id": "search_agent",
+  "name": "新闻搜索代理",
+  "agent_type": "search",
+  "enabled": true,
+  "description": "负责拉取候选新闻链接和原始内容。",
+  "version": "1.0.0",
+  "llm_profile": "mock-search",
+  "available_skills": ["web_search", "content_scraper"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

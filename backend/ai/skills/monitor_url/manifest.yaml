@@ -1,0 +1,15 @@
+{
+  "id": "monitor_url",
+  "name": "URL 监控",
+  "enabled": true,
+  "description": "创建 URL 监控任务。",
+  "version": "1.0.0",
+  "runtime": "python",
+  "input_schema": {"url": {"type": "str", "required": true}, "interval": {"type": "int", "required": true}},
+  "output_schema": {"status": {"type": "dict"}},
+  "tags": ["monitoring", "scheduler"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

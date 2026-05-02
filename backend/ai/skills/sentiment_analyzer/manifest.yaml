@@ -1,0 +1,15 @@
+{
+  "id": "sentiment_analyzer",
+  "name": "情绪分析",
+  "enabled": true,
+  "description": "识别文本倾向。",
+  "version": "1.0.0",
+  "runtime": "python",
+  "input_schema": {"text": {"type": "str", "required": true}},
+  "output_schema": {"sentiment": {"type": "dict"}},
+  "tags": ["sentiment", "review"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

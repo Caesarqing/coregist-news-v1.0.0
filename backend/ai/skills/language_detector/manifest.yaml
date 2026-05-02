@@ -1,0 +1,15 @@
+{
+  "id": "language_detector",
+  "name": "语言检测",
+  "enabled": true,
+  "description": "识别文本语言。",
+  "version": "1.0.0",
+  "runtime": "python",
+  "input_schema": {"text": {"type": "str", "required": true}},
+  "output_schema": {"language": {"type": "str"}},
+  "tags": ["language", "nlp"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

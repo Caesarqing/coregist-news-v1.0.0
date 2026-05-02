@@ -1,0 +1,15 @@
+{
+  "id": "app_notifier",
+  "name": "应用通知",
+  "enabled": true,
+  "description": "发送应用内通知。",
+  "version": "1.0.0",
+  "runtime": "python",
+  "input_schema": {"user_id": {"type": "str", "required": true}, "content": {"type": "str", "required": true}},
+  "output_schema": {"status": {"type": "dict"}},
+  "tags": ["notification", "app"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

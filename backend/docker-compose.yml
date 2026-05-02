@@ -1,0 +1,226 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: coregist-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-example}
+
+  redis:
+    image: redis:7-alpine
+    container_name: coregist-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: coregist-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - news-service
+      - search-service
+      - agent-config-service
+      - skill-config-service
+    environment:
+      PORT: 3000
+      ACCESS_TOKEN_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      USER_SERVICE_URL: http://user-service:3001
+      NEWS_SERVICE_URL: http://news-service:3002
+      SEARCH_SERVICE_URL: http://search-service:3005
+      AGENT_CONFIG_SERVICE_URL: http://agent-config-service:3003
+      SKILL_CONFIG_SERVICE_URL: http://skill-config-service:3004
+    ports:
+      - "3000:3000"
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      PORT: 3001
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-coregistnews-news}
+      ACCESS_TOKEN_EXPIRES_SECONDS: ${ACCESS_TOKEN_EXPIRES_SECONDS:-604800}
+      REFRESH_TOKEN_EXPIRES_SECONDS: ${REFRESH_TOKEN_EXPIRES_SECONDS:-2592000}
+      RESET_CODE_EXPIRES_MINUTES: ${RESET_CODE_EXPIRES_MINUTES:-10}
+
+  news-service:
+    build:
+      context: .
+      dockerfile: services/news-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      PORT: 3002
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-coregistnews-news}
+      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-dmax}
+      AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-https://www.dmxapi.cn/v1}
+      AI_REVIEW_REMOTE_MODEL: ${AI_REVIEW_REMOTE_MODEL:-Qwen3.5-2B-free}
+      AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
+      DMAX_API: ${DMAX_API:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+
+  search-service:
+    build:
+      context: .
+      dockerfile: services/search-service/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      PORT: 3005
+      SEARCH_SERVICE_PORT: 3005
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-coregistnews-news}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+  news-scraper-service:
+    build:
+      context: .
+      dockerfile: services/news_scraper/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - mongodb
+    environment:
+      PYTHONUNBUFFERED: "1"
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      SEARCH_DEFAULT_QUERY: ${SEARCH_DEFAULT_QUERY:-AI Agent 最新进展}
+      RSS_MAX_ITEMS_PER_FEED: ${RSS_MAX_ITEMS_PER_FEED:-20}
+      RSS_MAX_ITEMS_PER_FEED_HARD_LIMIT: ${RSS_MAX_ITEMS_PER_FEED_HARD_LIMIT:-50}
+
+  content-processing-service:
+    build:
+      context: .
+      dockerfile: services/content_processing/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    environment:
+      PYTHONUNBUFFERED: "1"
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+
+  ai-analysis-service:
+    build:
+      context: .
+      dockerfile: services/ai_analysis/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - mongodb
+    environment:
+      PYTHONUNBUFFERED: "1"
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+      DMAX_API: ${DMAX_API:-}
+      DMAX_BASE_URL: ${DMAX_BASE_URL:-https://www.dmxapi.cn/v1}
+      DMAX_REMOTE_MODEL: ${DMAX_REMOTE_MODEL:-Qwen3.5-2B-free}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      AI_CONTENT_MODEL: ${AI_CONTENT_MODEL:-dmax}
+      AI_CONTENT_REMOTE_MODEL: ${AI_CONTENT_REMOTE_MODEL:-Qwen3.5-2B-free}
+      AI_CONTENT_BASE_URL: ${AI_CONTENT_BASE_URL:-https://www.dmxapi.cn/v1}
+      AI_CONTENT_API_KEY: ${AI_CONTENT_API_KEY:-}
+      AI_CONTENT_MAX_TOKENS: ${AI_CONTENT_MAX_TOKENS:-900}
+      AI_CONTENT_CHAR_LIMIT: ${AI_CONTENT_CHAR_LIMIT:-4500}
+      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-dmax}
+      AI_REVIEW_REMOTE_MODEL: ${AI_REVIEW_REMOTE_MODEL:-Qwen3.5-2B-free}
+      AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-https://www.dmxapi.cn/v1}
+      AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
+      AI_REVIEW_MAX_TOKENS: ${AI_REVIEW_MAX_TOKENS:-1200}
+      AI_REVIEW_CHAR_LIMIT: ${AI_REVIEW_CHAR_LIMIT:-3500}
+
+  scheduler-service:
+    build:
+      context: .
+      dockerfile: services/scheduler/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    environment:
+      PYTHONUNBUFFERED: "1"
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      SCHEDULER_DEFAULT_QUERY: ${SEARCH_DEFAULT_QUERY:-AI Agent 最新进展}
+      SCHEDULER_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-30}
+      RSS_MAX_ITEMS_PER_FEED: ${RSS_MAX_ITEMS_PER_FEED:-20}
+      RSS_MAX_ITEMS_PER_FEED_HARD_LIMIT: ${RSS_MAX_ITEMS_PER_FEED_HARD_LIMIT:-50}
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - mongodb
+    environment:
+      PYTHONUNBUFFERED: "1"
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+
+  agent-config-service:
+    build:
+      context: .
+      dockerfile: services/agent_config/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      PYTHONUNBUFFERED: "1"
+      AGENT_CONFIG_PORT: 3003
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+
+  skill-config-service:
+    build:
+      context: .
+      dockerfile: services/skill_config/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SKILL_CONFIG_PORT: 3004
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+
+volumes:
+  mongodb_data:

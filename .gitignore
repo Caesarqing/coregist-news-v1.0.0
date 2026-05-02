@@ -1,0 +1,38 @@
+.DS_Store
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+backend/.runtime/
+backend/.runlogs/
+.venv/
+*.log
+*.zip
+~$*.docx
+frontend/.vscode/
+.vscode/
+frontend/.cursor/
+frontend/.codex/
+frontend/.github/
+frontend/.git/
+.cursor/
+.codex/
+.kiro/
+node_modules/
+.DS_Store
+
+# Cleanup backup directory
+.cleanup-backup/
+
+# Environment files
+backend/.env
+frontend/.env
+
+# CrawTasks data files
+backend/CrawTasks/*.jsonl
+backend/CrawTasks/*.json

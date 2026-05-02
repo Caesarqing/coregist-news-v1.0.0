@@ -1,0 +1,1 @@
+"""CoreGist News pipeline modules."""

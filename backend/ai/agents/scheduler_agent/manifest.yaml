@@ -1,0 +1,14 @@
+{
+  "id": "scheduler_agent",
+  "name": "调度代理",
+  "agent_type": "scheduler",
+  "enabled": true,
+  "description": "负责任务编排和定时触发。",
+  "version": "1.0.0",
+  "llm_profile": "mock-scheduler",
+  "available_skills": ["trigger_news_crawl", "monitor_url", "send_notification"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}

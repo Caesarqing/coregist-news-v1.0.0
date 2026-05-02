@@ -1,0 +1,392 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 14px;
+  --text-2xl: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-lg: 1.125rem;
+  --text-base: 1rem;
+  --text-sm: 0.875rem;
+  --text-xs: 0.75rem;
+
+  /* 背景：冷调中性白 */
+  --background: #f5f7fa;
+  --foreground: #0f172a;
+
+  /* 卡片：带轻微透明感 */
+  --card: rgba(255, 255, 255, 0.82);
+  --card-foreground: #0f172a;
+  --popover: rgba(255, 255, 255, 0.95);
+  --popover-foreground: #0f172a;
+
+  /* AI 蓝主色 */
+  --primary: #2563eb;
+  --primary-foreground: #f0f6ff;
+  --primary-glow: rgba(37, 99, 235, 0.35);  /* 新增：按钮发光色 */
+
+  /* 次级/静音色 */
+  --secondary: #dbeafe;
+  --secondary-foreground: #1e3a8a;
+  --muted: #eef2f8;
+  --muted-foreground: #5a6e8a;
+  --accent: #eff6ff;
+  --accent-foreground: #1e3a8a;
+
+  /* 语义色 */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  /* 描边：更轻 */
+  --border: rgba(210, 220, 235, 0.7);
+  --input: transparent;
+  --input-background: rgba(255, 255, 255, 0.9);
+  --switch-background: #94a3b8;
+  --ring: #3b82f6;
+
+  --radius: 0.85rem;
+
+  /* 图表色系 */
+  --chart-1: #1d4ed8;
+  --chart-2: #2563eb;
+  --chart-3: #3b82f6;
+  --chart-4: #60a5fa;
+  --chart-5: #93c5fd;
+
+  /* Sidebar */
+  --sidebar: rgba(255, 255, 255, 0.9);
+  --sidebar-foreground: #0f1720;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #f8fbff;
+  --sidebar-accent: #eff6ff;
+  --sidebar-accent-foreground: #1f2937;
+  --sidebar-border: rgba(210, 220, 235, 0.5);
+  --sidebar-ring: #3b82f6;
+
+  /* 品牌色阶 */
+  --brand-50: #eff6ff;
+  --brand-100: #dbeafe;
+  --brand-500: #2563eb;
+  --brand-600: #1d4ed8;
+}
+
+.dark {
+  /* 背景：近纯黑冷灰，去掉蓝调 */
+  --background: #0c0e14;
+  --foreground: #e2e8f4;
+
+  /* 卡片：深色磨砂玻璃 */
+  --card: rgba(14, 20, 32, 0.72);
+  --card-foreground: #e2e8f4;
+  --popover: rgba(14, 20, 32, 0.95);
+  --popover-foreground: #e2e8f4;
+
+  /* AI 蓝：dark mode 更明亮 */
+  --primary: #4d9fff;
+  --primary-foreground: #030d1a;
+  --primary-glow: rgba(77, 159, 255, 0.4);
+
+  /* 次级/静音色 */
+  --secondary: #162035;
+  --secondary-foreground: #b8d0f5;
+  --muted: #111827;
+  --muted-foreground: #7d8fa3;
+  --accent: #1a2e50;
+  --accent-foreground: #c8deff;
+
+  /* 语义色 */
+  --destructive: #ef4444;
+  --destructive-foreground: #fff8f8;
+
+  /* 描边：极细极暗 */
+  --border: rgba(38, 55, 84, 0.5);
+  --input: rgba(10, 18, 32, 0.6);
+  --input-background: rgba(12, 20, 35, 0.8);
+  --switch-background: #475569;
+  --ring: #4d9fff;
+
+  /* 图表 */
+  --chart-1: #4d9fff;
+  --chart-2: #3b82f6;
+  --chart-3: #2563eb;
+  --chart-4: #1d4ed8;
+  --chart-5: #93c5fd;
+
+  /* Sidebar */
+  --sidebar: rgba(14, 20, 32, 0.9);
+  --sidebar-foreground: #e2e8f4;
+  --sidebar-primary: #4d9fff;
+  --sidebar-primary-foreground: #030d1a;
+  --sidebar-accent: #111827;
+  --sidebar-accent-foreground: #c8deff;
+  --sidebar-border: rgba(38, 55, 84, 0.4);
+  --sidebar-ring: #4d9fff;
+
+  --brand-50: #1a2e50;
+  --brand-100: #203a66;
+  --brand-500: #4d9fff;
+  --brand-600: #3b82f6;
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', 'SF Pro Display', 'Segoe UI', sans-serif;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Sora', 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: 600;
+      line-height: 1.45;
+    }
+
+    p,
+    label,
+    button,
+    input {
+      font-size: var(--text-base);
+      line-height: 1.55;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes blob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(20px, -50px) scale(1.1);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  75% {
+    transform: translate(50px, 50px) scale(1.05);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+/* 虚化拼色背景 - Hero / 区块氛围（参考 Stary Writing 等） */
+.hero-bg-blur {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 统一改为纯色背景容器，去除虚化拼色效果 */
+.hero-bg-blur::before,
+.hero-bg-blur-dark::before {
+  content: none;
+}
+
+.hero-bg-blur-dark {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-bg-soft {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-bg-soft::before {
+  content: none;
+}
+
+.section-bg-cta {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-bg-cta::before {
+  content: none;
+}
+
+.dark .hero-bg-blur::before,
+.dark .section-bg-soft::before,
+.dark .section-bg-cta::before {
+  opacity: 0.7;
+}
+
+.dark .bg-white,
+.dark .bg-white\/90,
+.dark .bg-white\/95 {
+  background-color: var(--card) !important;
+}
+
+.dark .text-gray-900,
+.dark .text-slate-900 {
+  color: var(--foreground) !important;
+}
+
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-gray-400,
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--muted-foreground) !important;
+}
+
+.dark .bg-gray-50,
+.dark .bg-slate-50 {
+  background-color: color-mix(in srgb, var(--background) 92%, #ffffff 8%) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-slate-200,
+.dark .border-slate-100 {
+  border-color: var(--border) !important;
+}
+
+/* ========================================
+   AI Native Glass System
+   ======================================== */
+
+/* 玻璃卡片底层混合 - 用于高级玻璃效果 */
+.glass-surface {
+  background: var(--card);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--border);
+}
+
+/* AI 蓝光晕效果 - 用于 primary 按钮和重点 icon */
+.ai-glow {
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.3),
+    0 4px 24px var(--primary-glow),
+    0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.dark .ai-glow {
+  box-shadow:
+    0 0 0 1px rgba(77, 159, 255, 0.3),
+    0 4px 30px var(--primary-glow),
+    0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 微发光 hover - 用于可点击卡片 */
+.hover-glow:hover {
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.15),
+    0 8px 32px rgba(37, 99, 235, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dark .hover-glow:hover {
+  box-shadow:
+    0 0 0 1px rgba(77, 159, 255, 0.2),
+    0 8px 40px rgba(77, 159, 255, 0.12),
+    0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* 分隔线替换方案 - 用渐变淡出代替实线 */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--border) 30%,
+    var(--border) 70%,
+    transparent 100%
+  );
+  opacity: 0.5;
+  margin: 0 auto;
+  width: 80%;
+  border: none;
+}
+
+/* AI 渐变文字 - 用于标题强调 */
+.gradient-text-ai {
+  background: linear-gradient(135deg, var(--primary) 0%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 微动画脉冲 - AI dot indicator */
+@keyframes ai-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+.animate-ai-pulse {
+  animation: ai-pulse 2s ease-in-out infinite;
+}
+
+/* 平滑 fade-in-up - 页面元素进场 */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease forwards;
+}

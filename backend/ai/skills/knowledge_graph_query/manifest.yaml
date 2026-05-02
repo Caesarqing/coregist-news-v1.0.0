@@ -1,0 +1,15 @@
+{
+  "id": "knowledge_graph_query",
+  "name": "知识图谱查询",
+  "enabled": true,
+  "description": "查询知识库验证信息。",
+  "version": "1.0.0",
+  "runtime": "python",
+  "input_schema": {"query": {"type": "str", "required": true}},
+  "output_schema": {"result": {"type": "dict"}},
+  "tags": ["knowledge-graph", "review"],
+  "metadata": {
+    "owner": "coregist-news",
+    "status": "active"
+  }
+}
