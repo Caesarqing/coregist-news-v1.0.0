@@ -2,7 +2,7 @@ const express = require('express');
 
 const { connectToMongo } = require('../shared/node/db');
 const { healthCheck } = require('./controllers/health.controller');
-const { authRequired, legacyAiSearch, legacyNewsSearch, optionalAuth } = require('./controllers/search.controller');
+const { authRequired, legacyAiSearch, legacyNewsSearch } = require('./controllers/search.controller');
 const searchRouter = require('./routes/search.routes');
 
 const app = express();
@@ -10,8 +10,8 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', healthCheck);
-app.get('/news/search', optionalAuth, legacyNewsSearch);
-app.post('/news/search', optionalAuth, legacyNewsSearch);
+app.get('/news/search', authRequired, legacyNewsSearch);
+app.post('/news/search', authRequired, legacyNewsSearch);
 app.get('/ai-search', authRequired, legacyAiSearch);
 app.post('/ai-search', authRequired, legacyAiSearch);
 app.use('/search', searchRouter);

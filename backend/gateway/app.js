@@ -25,7 +25,7 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'dev-secret-change-me';
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || 'dev-secret-change-me';
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
 const NEWS_SERVICE_URL = process.env.NEWS_SERVICE_URL || 'http://localhost:3002';
 const SEARCH_SERVICE_URL = process.env.SEARCH_SERVICE_URL || 'http://localhost:3005';
@@ -116,10 +116,10 @@ app.use('/api/auth', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}
 app.use('/api/user', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/user'));
 app.use('/api/users', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/users'));
 app.use('/api/tracking', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/tracking`, '/api/tracking'));
-app.use('/api/news/search', (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/news/search`, '/api/news/search'));
-app.use('/api/search', (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/search`, '/api/search'));
-app.use('/api/news', (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
-app.use('/api/ai-search', (req, res) => forwardRequest(req, res, SEARCH_SERVICE_URL, '/api'));
+app.use('/api/news/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/news/search`, '/api/news/search'));
+app.use('/api/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/search`, '/api/search'));
+app.use('/api/news', authenticateToken, (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
+app.use('/api/ai-search', authenticateToken, (req, res) => forwardRequest(req, res, SEARCH_SERVICE_URL, '/api'));
 
 app.use('/api/agents', authenticateToken, (req, res) => forwardRequest(req, res, `${AGENT_CONFIG_SERVICE_URL}/agents`, '/api/agents'));
 app.use('/api/skills', authenticateToken, (req, res) => forwardRequest(req, res, `${SKILL_CONFIG_SERVICE_URL}/skills`, '/api/skills'));

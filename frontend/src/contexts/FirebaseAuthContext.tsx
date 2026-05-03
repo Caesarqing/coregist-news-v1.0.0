@@ -31,7 +31,6 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       if (user) {
         user.getIdToken().then(token => {
           localStorage.setItem('firebase_token', token);
-          localStorage.setItem('access_token', token); // 兼容现有系统
         });
       } else {
         localStorage.removeItem('firebase_token');
