@@ -70,6 +70,14 @@ class LLMProvider:
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
+    @staticmethod
+    def _openrouter_fallback_config() -> dict[str, str]:
+        return {
+            "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip(),
+            "api_key": os.getenv("OPENROUTER_API_KEY", "").strip(),
+            "remote_model": os.getenv("OPENROUTER_MODEL", "").strip(),
+        }
+
     def invoke(self, model_name: str, prompt: str, **kwargs: Any) -> str:
         model_name = (model_name or "mock").strip()
         temperature = kwargs.get("temperature", 0.2)
@@ -100,7 +108,20 @@ class LLMProvider:
             base_url = (kwargs.get("base_url") or os.getenv("DMAX_BASE_URL") or "https://www.dmxapi.cn/v1").rstrip("/")
             raw_api_key = (kwargs.get("api_key") or os.getenv("DMAX_API") or "").strip()
             remote_model = kwargs.get("remote_model") or os.getenv("DMAX_REMOTE_MODEL") or "Qwen3.5-2B-free"
+            fallback = self._openrouter_fallback_config()
             if not raw_api_key:
+                if fallback["api_key"] and fallback["remote_model"]:
+                    logger.warning("DMAX API key is not configured; using OpenRouter fallback")
+                    return self._invoke_openrouter(
+                        base_url=fallback["base_url"],
+                        api_key=fallback["api_key"],
+                        remote_model=fallback["remote_model"],
+                        prompt=prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        response_format_json=response_format_json,
+                    )
                 raise RuntimeError("DMAX API key is not configured")
             auth_header = raw_api_key if raw_api_key.lower().startswith("bearer ") else f"Bearer {raw_api_key}"
             payload = {
@@ -112,21 +133,7 @@ class LLMProvider:
             }
             if response_format_json:
                 payload["response_format"] = {"type": "json_object"}
-            response = requests.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": auth_header,
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=timeout,
-            )
-            if (
-                response_format_json
-                and response.status_code in {400, 422}
-                and "response_format" in response.text.lower()
-            ):
-                payload.pop("response_format", None)
+            try:
                 response = requests.post(
                     f"{base_url}/chat/completions",
                     headers={
@@ -136,9 +143,38 @@ class LLMProvider:
                     json=payload,
                     timeout=timeout,
                 )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+                if (
+                    response_format_json
+                    and response.status_code in {400, 422}
+                    and "response_format" in response.text.lower()
+                ):
+                    payload.pop("response_format", None)
+                    response = requests.post(
+                        f"{base_url}/chat/completions",
+                        headers={
+                            "Authorization": auth_header,
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                        timeout=timeout,
+                    )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            except Exception:
+                if fallback["api_key"] and fallback["remote_model"]:
+                    logger.exception("DMAX invoke failed; using OpenRouter fallback")
+                    return self._invoke_openrouter(
+                        base_url=fallback["base_url"],
+                        api_key=fallback["api_key"],
+                        remote_model=fallback["remote_model"],
+                        prompt=prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        timeout=timeout,
+                        response_format_json=response_format_json,
+                    )
+                raise
 
         if model_name == "mock":
             return self._mock_response(model_name, prompt)

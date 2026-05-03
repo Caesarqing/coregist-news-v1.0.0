@@ -221,7 +221,7 @@ sudo certbot renew --dry-run
 ```env
 VITE_APP_NAME=AI News Assistant
 VITE_APP_DOMAIN=coregist-news.com
-VITE_API_BASE_URL=https://api.coregist-news.com
+VITE_API_BASE_URL=/api
 VITE_APP_URL=https://coregist-news.com
 ```
 
