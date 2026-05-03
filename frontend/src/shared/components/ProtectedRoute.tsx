@@ -6,6 +6,22 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
+function hasBackendAccessTokenShape(token: string) {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return false;
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '='
+    );
+    const claims = JSON.parse(atob(paddedPayload));
+    return claims?.tokenType === 'access' && Boolean(claims?.userId);
+  } catch {
+    return false;
+  }
+}
+
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
@@ -15,6 +31,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     const token = localStorage.getItem('access_token');
 
     if (!token) {
+      setAuthState('unauthenticated');
+      return;
+    }
+
+    if (!hasBackendAccessTokenShape(token)) {
+      apiClient.clearAuth();
       setAuthState('unauthenticated');
       return;
     }
