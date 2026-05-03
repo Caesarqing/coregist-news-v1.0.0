@@ -107,7 +107,12 @@ class LLMProvider:
         if model_name.startswith("dmax"):
             base_url = (kwargs.get("base_url") or os.getenv("DMAX_BASE_URL") or "https://www.dmxapi.cn/v1").rstrip("/")
             raw_api_key = (kwargs.get("api_key") or os.getenv("DMAX_API") or "").strip()
-            remote_model = kwargs.get("remote_model") or os.getenv("DMAX_REMOTE_MODEL") or "Qwen3.5-2B-free"
+            remote_model = (
+                kwargs.get("remote_model")
+                or os.getenv("DMAX_MODEL")
+                or os.getenv("DMAX_REMOTE_MODEL")
+                or "Qwen3.5-2B-free"
+            )
             fallback = self._openrouter_fallback_config()
             if not raw_api_key:
                 if fallback["api_key"] and fallback["remote_model"]:
