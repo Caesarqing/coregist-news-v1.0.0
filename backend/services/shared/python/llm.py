@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
 
 logger = logging.getLogger(__name__)
 
