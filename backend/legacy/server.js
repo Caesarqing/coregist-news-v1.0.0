@@ -14,7 +14,6 @@ const News = require('../models/News');
 const User = require('../models/User');
 const UserNewsState = require('../models/UserNewsState');
 const TrackingTopic = require('../models/TrackingTopic');
-const { callModel } = require('../modelClient');
 const { buildNewsIdentity, buildNewsLookupQuery } = require('../services/shared/node/news-identity');
 
 const app = express();
@@ -1473,77 +1472,6 @@ app.post('/api/news', async (req, res) => {
   } catch (err) {
     console.error('Error creating news:', err);
     res.status(400).json({ error: 'Invalid data', details: err.message });
-  }
-});
-
-// AI 搜索 / 问答接口
-app.post('/api/ai-search', async (req, res) => {
-  try {
-    const { query } = req.body;
-
-    if (!query || typeof query !== 'string') {
-      return res.status(400).json({ error: '缺少 query 字段' });
-    }
-    const imageUrls = [
-      ...(Array.isArray(req.body?.image_urls) ? req.body.image_urls : []),
-      ...(req.body?.image_url ? [req.body.image_url] : []),
-    ]
-      .map((item) => {
-        if (typeof item === 'string') return item.trim();
-        if (item && typeof item === 'object') return (item.url || item.image_url?.url || '').toString().trim();
-        return '';
-      })
-      .filter(Boolean);
-
-    // 1. 用 Mongoose 从数据库取最近几条新闻
-    const newsDocs = await News.find()
-      .sort({ postedAt: -1, createdAt: -1 })
-      .limit(5)
-      .lean();
-
-    const newsText =
-      newsDocs
-        .map((n, idx) => {
-          return `${idx + 1}. 标题(中文): ${n.title_zh || ''}\n标题(英文): ${n.title_en || ''}\n摘要(中文): ${
-            n.summary_zh || ''
-          }\n摘要(英文): ${n.summary_en || ''}\n链接: ${n.link || ''}`;
-        })
-        .join('\n\n') || '（目前数据库中的新闻比较少，可能只有测试数据）';
-
-    // 2. 构造发给 Gemini 的中文 prompt
-    const prompt = `
-你是一个中文的 AI 新闻搜索和问答助手。
-
-用户的问题是：
-"${query}"
-
-下面是数据库中最近的几条新闻（可能很少，因为现在只有测试数据）：
-${newsText}
-
-请你：
-1. 尽量基于以上新闻内容来回答用户的问题；
-2. 如果这些新闻里没有相关信息，就诚实说明“目前新闻库中没有找到相关内容”，不要胡编；
-3. 回答使用简体中文。
-`;
-
-    // 3. 调用 Gemini
-    const answer = await callModel({ prompt, imageUrls });
-
-    // 4. 返回给前端
-    res.json({
-      query,
-      answer,
-      imageUrls,
-      usedNews: newsDocs.map((n) => ({
-        id: n._id,
-        title_zh: n.title_zh,
-        title_en: n.title_en,
-        link: n.link,
-      })),
-    });
-  } catch (err) {
-    console.error('AI 搜索接口出错:', err);
-    res.status(502).json({ error: 'AI 搜索失败', details: err?.message || '模型调用异常' });
   }
 });
 

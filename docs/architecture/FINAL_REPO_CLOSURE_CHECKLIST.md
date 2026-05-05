@@ -58,19 +58,16 @@ This checklist captures the final closure state for the CoreGist News repository
 - Tracking-topic jobs and push-settings jobs now share the same scheduling rhythm.
 
 ## 5. LLM Provider Closure
-Only the following external model providers remain enabled:
-- `dmxapi`
-- `openrouter`
+External model calls now go through the Python provider adapter:
+- OpenAI-compatible `/chat/completions` APIs, including DMAX, OpenRouter, Ollama `/v1`, and compatible hosted gateways.
+- Anthropic native `/v1/messages`.
 
 Removed or disabled provider paths:
 - Gemini
-- GPT / direct OpenAI provider path
 - Poe
-- Ollama
-- Generic OpenAI-compatible self-hosted provider path
+- Node.js model client path
 
 Key files:
-- `backend/modelClient.js`
 - `backend/services/shared/python/llm.py`
 - `backend/services/shared/python/settings.py`
 - `backend/env.example`

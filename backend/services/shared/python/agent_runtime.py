@@ -381,7 +381,7 @@ def _runtime_default_agents() -> List[Agent]:
             "api_key": settings.ai_content_api_key,
             "max_tokens": settings.ai_content_max_tokens,
             "temperature": settings.ai_content_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_content_json_mode,
         },
         prompt_template=(
             "请阅读以下新闻正文，输出结构化 JSON，只包含 title_zh、summary_zh、title_en、summary_en。"
@@ -400,7 +400,7 @@ def _runtime_default_agents() -> List[Agent]:
             "api_key": settings.ai_review_api_key,
             "max_tokens": settings.ai_review_max_tokens,
             "temperature": settings.ai_review_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_review_json_mode,
         },
         prompt_template="请分析以下新闻的偏向性、事实完整性与情绪倾向：{content}",
         available_skills=["fact_checker", "sentiment_analyzer"],
@@ -417,7 +417,7 @@ def _runtime_default_agents() -> List[Agent]:
             "api_key": settings.ai_review_api_key,
             "max_tokens": settings.ai_review_max_tokens,
             "temperature": settings.ai_review_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_review_json_mode,
         },
         prompt_template="请从信息密度、真实性、影响力、传播范围为新闻打分：{content}",
         available_skills=["knowledge_graph_query", "social_media_monitor"],
@@ -434,7 +434,7 @@ def _runtime_default_agents() -> List[Agent]:
             "api_key": settings.ai_review_api_key,
             "max_tokens": settings.ai_review_max_tokens,
             "temperature": settings.ai_review_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_review_json_mode,
         },
         prompt_template=(
             "请结合新闻摘要、事实核查、情绪、知识图谱和传播参考，"

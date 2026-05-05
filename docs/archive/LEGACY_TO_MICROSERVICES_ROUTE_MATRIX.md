@@ -114,13 +114,7 @@
 
 ### 6. AI 搜索
 
-来源文件：
-- 微服务入口: [app.js](/Users/qingpeng/全公司项目/7-人工智能/新闻AI项目/coregist-news/backend/services/news-service/app.js)
-- 控制器: [ai.controller.js](/Users/qingpeng/全公司项目/7-人工智能/新闻AI项目/coregist-news/backend/services/news-service/controllers/ai.controller.js)
-
-| 旧单体路由 | 微服务路由 | 状态 |
-|---|---|---|
-| `POST /api/ai-search` | `POST /ai-search` | 已覆盖 |
+`news-service` 中旧的 Node.js 模型问答接口已移除。当前 `/api/ai-search` 由 search-service 的统一搜索路径承接，不再维护 `news-service/controllers/ai.controller.js`。
 
 ### 7. Agent / Skill 配置
 

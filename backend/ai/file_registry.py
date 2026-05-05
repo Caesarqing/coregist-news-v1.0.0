@@ -38,7 +38,7 @@ def _llm_profile(profile: str | None) -> Dict[str, Any]:
             "api_key": settings.ai_content_api_key,
             "max_tokens": settings.ai_content_max_tokens,
             "temperature": settings.ai_content_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_content_json_mode,
         },
         "review": {
             "model": settings.ai_review_model,
@@ -47,7 +47,7 @@ def _llm_profile(profile: str | None) -> Dict[str, Any]:
             "api_key": settings.ai_review_api_key,
             "max_tokens": settings.ai_review_max_tokens,
             "temperature": settings.ai_review_temperature,
-            "response_format_json": True,
+            "response_format_json": settings.ai_review_json_mode,
         },
     }
     return dict(profiles.get(profile or "", {}))

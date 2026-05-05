@@ -2,7 +2,6 @@ const express = require('express');
 
 const { connectToMongo } = require('../shared/node/db');
 const { healthCheck } = require('./controllers/health.controller');
-const { aiSearch } = require('./controllers/ai.controller');
 const newsRouter = require('./routes/news.routes');
 
 const app = express();
@@ -10,7 +9,6 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', healthCheck);
-app.post('/ai-search', aiSearch);
 app.use('/news', newsRouter);
 
 async function start() {

@@ -82,13 +82,6 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-coregistnews-news}
-      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-dmax}
-      AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-https://www.dmxapi.cn/v1}
-      AI_REVIEW_REMOTE_MODEL: ${AI_REVIEW_REMOTE_MODEL:-Qwen3.5-2B-free}
-      AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
-      DMAX_API: ${DMAX_API:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
 
   search-service:
     build:
@@ -134,6 +127,31 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://www.dmxapi.cn/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-${DMAX_API:-}}
+      LLM_MODEL: ${LLM_MODEL:-${DMAX_MODEL:-${DMAX_REMOTE_MODEL:-Qwen3.5-2B-free}}}
+      LLM_JSON_MODE: ${LLM_JSON_MODE:-true}
+      ANTHROPIC_VERSION: ${ANTHROPIC_VERSION:-2023-06-01}
+      DMAX_API: ${DMAX_API:-}
+      DMAX_BASE_URL: ${DMAX_BASE_URL:-https://www.dmxapi.cn/v1}
+      DMAX_MODEL: ${DMAX_MODEL:-}
+      DMAX_REMOTE_MODEL: ${DMAX_REMOTE_MODEL:-Qwen3.5-2B-free}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      AI_CONTENT_MODEL: ${AI_CONTENT_MODEL:-${LLM_PROVIDER:-openai-compatible}}
+      AI_CONTENT_LLM_MODEL: ${AI_CONTENT_LLM_MODEL:-}
+      AI_CONTENT_MAX_TOKENS: ${AI_CONTENT_MAX_TOKENS:-900}
+      AI_CONTENT_CHAR_LIMIT: ${AI_CONTENT_CHAR_LIMIT:-4500}
+      AI_CONTENT_JSON_MODE: ${AI_CONTENT_JSON_MODE:-${LLM_JSON_MODE:-true}}
+      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-${LLM_PROVIDER:-openai-compatible}}
+      AI_REVIEW_LLM_MODEL: ${AI_REVIEW_LLM_MODEL:-}
+      AI_REVIEW_MAX_TOKENS: ${AI_REVIEW_MAX_TOKENS:-1200}
+      AI_REVIEW_CHAR_LIMIT: ${AI_REVIEW_CHAR_LIMIT:-3500}
+      AI_REVIEW_JSON_MODE: ${AI_REVIEW_JSON_MODE:-${LLM_JSON_MODE:-true}}
 
   ai-analysis-service:
     build:
@@ -148,24 +166,29 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://www.dmxapi.cn/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-${DMAX_API:-}}
+      LLM_MODEL: ${LLM_MODEL:-${DMAX_MODEL:-${DMAX_REMOTE_MODEL:-Qwen3.5-2B-free}}}
+      LLM_JSON_MODE: ${LLM_JSON_MODE:-true}
+      ANTHROPIC_VERSION: ${ANTHROPIC_VERSION:-2023-06-01}
       DMAX_API: ${DMAX_API:-}
       DMAX_BASE_URL: ${DMAX_BASE_URL:-https://www.dmxapi.cn/v1}
+      DMAX_MODEL: ${DMAX_MODEL:-}
       DMAX_REMOTE_MODEL: ${DMAX_REMOTE_MODEL:-Qwen3.5-2B-free}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
-      AI_CONTENT_MODEL: ${AI_CONTENT_MODEL:-dmax}
-      AI_CONTENT_REMOTE_MODEL: ${AI_CONTENT_REMOTE_MODEL:-Qwen3.5-2B-free}
-      AI_CONTENT_BASE_URL: ${AI_CONTENT_BASE_URL:-https://www.dmxapi.cn/v1}
-      AI_CONTENT_API_KEY: ${AI_CONTENT_API_KEY:-}
+      AI_CONTENT_MODEL: ${AI_CONTENT_MODEL:-${LLM_PROVIDER:-openai-compatible}}
+      AI_CONTENT_LLM_MODEL: ${AI_CONTENT_LLM_MODEL:-}
       AI_CONTENT_MAX_TOKENS: ${AI_CONTENT_MAX_TOKENS:-900}
       AI_CONTENT_CHAR_LIMIT: ${AI_CONTENT_CHAR_LIMIT:-4500}
-      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-dmax}
-      AI_REVIEW_REMOTE_MODEL: ${AI_REVIEW_REMOTE_MODEL:-Qwen3.5-2B-free}
-      AI_REVIEW_BASE_URL: ${AI_REVIEW_BASE_URL:-https://www.dmxapi.cn/v1}
-      AI_REVIEW_API_KEY: ${AI_REVIEW_API_KEY:-}
+      AI_CONTENT_JSON_MODE: ${AI_CONTENT_JSON_MODE:-${LLM_JSON_MODE:-true}}
+      AI_REVIEW_MODEL: ${AI_REVIEW_MODEL:-${LLM_PROVIDER:-openai-compatible}}
+      AI_REVIEW_LLM_MODEL: ${AI_REVIEW_LLM_MODEL:-}
       AI_REVIEW_MAX_TOKENS: ${AI_REVIEW_MAX_TOKENS:-1200}
       AI_REVIEW_CHAR_LIMIT: ${AI_REVIEW_CHAR_LIMIT:-3500}
+      AI_REVIEW_JSON_MODE: ${AI_REVIEW_JSON_MODE:-${LLM_JSON_MODE:-true}}
 
   scheduler-service:
     build:
