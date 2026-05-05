@@ -1,48 +1,44 @@
-# AI Library Guide
+# AI Library
 
-## Current State
+`backend/ai/` 是文件化 Agent / Skill 资源库。配置服务会优先读取这些文件作为默认配置，运行时实现仍由 Python shared runtime 承载。
 
-The backend now supports a file-first AI library under `backend/ai/`.
+## Agent 目录约定
 
-- Default agents live in `backend/ai/agents/`
-- Default skills live in `backend/ai/skills/`
-- Config services and runtime defaults now load these files first
-- `agent_runtime.py` remains the execution layer for built-in implementations
+```text
+backend/ai/agents/<agent_name>/
+  manifest.yaml
+  Soul.md
+  prompts/system.md
+  prompts/task.md
+```
 
-## Agent Directory Convention
+## Skill 目录约定
 
-Each agent should use this structure:
+```text
+backend/ai/skills/<skill_name>/
+  manifest.yaml
+  README.md
+  executor.py 或 executor.js
+  prompts/instructions.md
+```
 
-- `manifest.yaml`
-- `Soul.md`
-- `prompts/system.md`
-- `prompts/task.md`
+## 当前边界
 
-## Skill Directory Convention
+已经文件化：
 
-Each skill should use this structure:
+- Agent 默认配置。
+- Skill 默认配置。
+- Config Service 的默认读取。
+- 运行时默认 Agent / Skill 元数据。
 
-- `manifest.yaml`
-- `README.md`
-- `executor.py` or `executor.js`
-- `prompts/instructions.md`
+仍在代码中实现：
 
-## Current Migration Boundary
+- 内置 Python skill 执行逻辑。
+- 新闻后台流水线调度。
+- 动态加载 executor 的完整沙箱策略。
 
-Already file-first:
-- agent defaults for config service
-- skill defaults for config service
-- runtime default agent registry
-- runtime default skill metadata
+## 后续维护
 
-Still runtime-coded:
-- built-in Python skill implementations in `backend/agent_runtime.py`
-- background pipeline orchestration
-- any future dynamic agent loading from file executors
-
-## Next Suggested Changes
-
-1. Move runtime implementations from `backend/agent_runtime.py` into per-skill executors.
-2. Add validator scripts for agent and skill manifests.
-3. Introduce versioned schemas for manifests in `packages/contracts/`.
-4. Add a bootstrap command that syncs file defaults into MongoDB.
+- 新增 Agent / Skill 时，先补齐 `manifest.yaml` 和 prompts。
+- 涉及运行时执行能力时，同步更新 `backend/services/shared/python/agent_runtime.py`。
+- 不在 prompt 或 manifest 中写入真实密钥。

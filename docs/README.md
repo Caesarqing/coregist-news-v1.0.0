@@ -1,23 +1,23 @@
-# CoreGist Docs
+# CoreGist News 文档
+
+本文档目录只保留当前有效的项目说明、部署说明和运维手册。历史修复记录、一次性迁移记录和重复指南已合并删除。
 
 ## 核心文档
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: 完整的系统架构文档（微服务架构、服务通信、API路由）
-- **[CLEANUP_REPORT.md](CLEANUP_REPORT.md)**: 代码库清理和优化报告（2026-04-27）
-- **[MULTILINGUAL_FIX_REPORT.md](MULTILINGUAL_FIX_REPORT.md)**: 多语言支持修复报告（2026-04-27）
-- **[LOGIN_ISSUES_ANALYSIS.md](LOGIN_ISSUES_ANALYSIS.md)**: Google登录和Token刷新问题分析（2026-04-27）
+- [ARCHITECTURE.md](ARCHITECTURE.md): 系统架构、服务边界、请求链路。
+- [BACKEND.md](BACKEND.md): 后端服务、环境变量、队列和本地运行。
+- [FRONTEND.md](FRONTEND.md): 前端结构、路由、API 客户端和构建。
+- [AUTH.md](AUTH.md): 登录、Firebase、JWT、路由保护和 API 访问控制。
+- [NEWS_PIPELINE.md](NEWS_PIPELINE.md): RSS 抓取、内容处理、AI 分析、搜索入库和排查。
+- [LLM.md](LLM.md): OpenAI-compatible / Anthropic / Ollama 等通用 LLM 接口配置。
+- [DEPLOYMENT.md](DEPLOYMENT.md): 生产部署、域名、PM2、Docker Compose 和回滚。
+- [OPERATIONS.md](OPERATIONS.md): 常用排查命令、日志、新闻不更新处理流程。
+- [ATTRIBUTIONS.md](ATTRIBUTIONS.md): 第三方素材和组件 attribution。
+- [ai-library/README.md](ai-library/README.md): 文件化 Agent / Skill 资源库说明。
 
-## 文档结构
+## 文档维护规则
 
-- `architecture/`: 架构设计和重构审计文档
-- `frontend/`: 前端实现和迁移说明
-- `backend/`: 后端运维手册、迁移说明和服务文档
-- `ai-library/`: 基于文件的agent和skill库文档
-- `runbooks/`: 本地/开发/运维流程
-- `archive/`: 历史文档和临时参考文件
-
-## 重要文档
-
-- `architecture/NEWS_CENTER_DATA_THREAD.md`: 新闻中心从页面到RSS/AI入库的完整线程与排查顺序
-- `ARCHITECTURE.md`: 统一的系统架构文档（已整合旧的架构文档）
-- `CLEANUP_REPORT.md`: 代码库清理报告（删除34个冗余文件，优化项目结构）
+- 新增功能优先更新上述稳定文档，不再新增一次性“修复完成报告”。
+- 临时排查记录应进入 issue、PR 或运维日志，确认长期有效后再整理进文档。
+- 不在文档中写入真实密钥、数据库密码、JWT secret 或第三方 token。
+- 过期文档直接删除，不保留重复版本。

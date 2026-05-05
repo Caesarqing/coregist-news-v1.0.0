@@ -4,7 +4,7 @@ This directory is no longer the primary ingestion path.
 
 Canonical documentation now lives at:
 
-- [docs/backend/PIPELINE_CRAWTASKS.md](/Users/qingpeng/全公司项目/7-人工智能/新闻AI项目/coregist-news/docs/backend/PIPELINE_CRAWTASKS.md)
+- [docs/NEWS_PIPELINE.md](../../docs/NEWS_PIPELINE.md)
 
 Short version:
 

@@ -1,487 +1,102 @@
-# CoreGist News - System Architecture
+# CoreGist News 系统架构
 
-**Last Updated:** 2026-04-27  
-**Status:** Production-ready microservices architecture
+最后更新：2026-05-05
 
-> **Note:** This architecture document reflects the current state after codebase cleanup and optimization.  
-> See [CLEANUP_REPORT.md](CLEANUP_REPORT.md) for details on removed redundant files and structural improvements.
+## 总览
 
-## Table of Contents
+CoreGist News 由一个 React 前端、一个 Node.js API Gateway、多个 Node.js 在线业务服务、多个 Python 后台流水线服务，以及 MongoDB / RabbitMQ / Redis 组成。
 
-1. [System Overview](#system-overview)
-2. [Architecture Diagram](#architecture-diagram)
-3. [Service Mapping](#service-mapping)
-4. [API Gateway Routes](#api-gateway-routes)
-5. [Frontend Integration](#frontend-integration)
-6. [Development Guide](#development-guide)
-7. [Deployment](#deployment)
+```text
+Browser
+  -> Frontend
+  -> Gateway /api/*
+  -> User / News / Search / Agent Config / Skill Config services
 
----
-
-## System Overview
-
-CoreGist News is an **AI-powered news aggregation platform** built with a **microservices architecture**. The system crawls news from multiple international sources, processes them through AI-powered summarization, and presents them in both English and Chinese.
-
-### Core Components
-
-- **Frontend**: React 18.2 + TypeScript + Vite (Port 5173)
-- **API Gateway**: Express 5.1 (Port 3000) - Single entry point for all API requests
-- **User Service**: Express (Port 3001) - Authentication, profiles, settings, tracking
-- **News Service**: Express (Port 3002) - News CRUD, search, AI analysis
-- **Search Service**: Express (Port 3005) - Advanced search and recommendations
-- **Python Services**: Agent/Skill config, scraping, AI analysis, notifications
-- **Database**: MongoDB (Port 27017)
-- **Message Queue**: RabbitMQ (Port 5672)
-- **Cache**: Redis (Port 6379)
-
-### Key Features
-
-- Multi-source news aggregation (BBC, Al Jazeera, DW, CBC, etc.)
-- AI-powered dual-language summarization (GPT, Gemini, Ollama)
-- User authentication (Email/Password + Google OAuth)
-- Personalized news recommendations
-- Topic tracking system
-- Customizable push notifications
-- Multi-language UI (Chinese, English, Traditional Chinese)
-
----
-
-## Architecture Diagram
-
-```mermaid
-flowchart TB
-    subgraph Client
-        FE[Frontend<br/>React + Vite<br/>:5173]
-    end
-    
-    subgraph "API Layer"
-        GW[API Gateway<br/>Express<br/>:3000]
-    end
-    
-    subgraph "Node.js Microservices"
-        US[User Service<br/>:3001]
-        NS[News Service<br/>:3002]
-        SS[Search Service<br/>:3005]
-    end
-    
-    subgraph "Python Services"
-        AC[Agent Config<br/>:3003]
-        SC[Skill Config<br/>:3004]
-        NSC[News Scraper]
-        CP[Content Processing]
-        AI[AI Analysis]
-        SCH[Scheduler]
-        NOT[Notification]
-    end
-    
-    subgraph "Data Layer"
-        MDB[(MongoDB<br/>:27017)]
-        RMQ[RabbitMQ<br/>:5672]
-        RED[(Redis<br/>:6379)]
-    end
-    
-    subgraph "External Services"
-        GEM[Gemini API]
-        GPT[OpenAI API]
-        OLL[Ollama]
-    end
-    
-    FE -->|HTTP/JSON| GW
-    GW --> US
-    GW --> NS
-    GW --> SS
-    GW --> AC
-    GW --> SC
-    
-    US --> MDB
-    NS --> MDB
-    SS --> MDB
-    AC --> MDB
-    SC --> MDB
-    
-    NSC --> RMQ
-    CP --> RMQ
-    AI --> RMQ
-    SCH --> RMQ
-    NOT --> RMQ
-    
-    NSC --> MDB
-    AI --> MDB
-    NOT --> MDB
-    
-    NS --> RED
-    SS --> RED
-    
-    NS --> GEM
-    AI --> GPT
-    AI --> OLL
+Scheduler / manual trigger
+  -> RabbitMQ
+  -> News Scraper
+  -> Content Processing
+  -> AI Dispatcher
+  -> AI Analysis
+  -> MongoDB
+  -> Search / News API
 ```
 
----
+## 目录边界
 
-## Service Mapping
-
-### Port Allocation
-
-| Service | Port | Technology | Purpose |
-|---------|------|------------|---------|
-| Frontend | 5173 | Vite Dev Server | Web UI |
-| Gateway | 3000 | Express | API Gateway |
-| User Service | 3001 | Express | User management |
-| News Service | 3002 | Express | News operations |
-| Agent Config | 3003 | Python/Flask | Agent configuration |
-| Skill Config | 3004 | Python/Flask | Skill configuration |
-| Search Service | 3005 | Express | Search & recommendations |
-| MongoDB | 27017 | MongoDB 7 | Primary database |
-| RabbitMQ | 5672 | RabbitMQ 3 | Message queue |
-| Redis | 6379 | Redis 7 | Cache layer |
-
-### Service Responsibilities
-
-#### User Service (Node.js)
-- **Authentication**: Login, register, password reset, Google OAuth
-- **User Profiles**: Profile management, avatar, settings
-- **Tracking Topics**: Create, read, update, delete tracking topics
-- **Analytics**: User activity and topic analytics
-
-#### News Service (Node.js)
-- **News CRUD**: Create, read, update news articles
-- **Search**: Keyword search, filtering, pagination
-- **AI Search**: Gemini-powered semantic search
-- **User State**: Track read/hidden/favorited news per user
-
-#### Search Service (Node.js)
-- **Advanced Search**: Full-text search with MongoDB Atlas
-- **Recommendations**: Personalized news recommendations
-- **Caching**: Redis-based search result caching
-
-#### Python Services
-- **News Scraper**: RSS feed ingestion, web scraping
-- **Content Processing**: HTML cleaning, text extraction
-- **AI Analysis**: Summarization, classification, sentiment analysis
-- **Scheduler**: Periodic scraping tasks
-- **Notification**: Push notification delivery
-- **Agent/Skill Config**: AI agent and skill management
-
----
-
-## API Gateway Routes
-
-The Gateway (`backend/gateway/app.js`) is the **single entry point** for all frontend requests.
-
-### Route Forwarding Table
-
-| Gateway Route | Target Service | Target Path | Auth Required |
-|---------------|----------------|-------------|---------------|
-| `/api/health` | Gateway | - | No |
-| `/api/auth/*` | User Service | `/auth/*` | No |
-| `/api/user/*` | User Service | `/user/*` | Yes |
-| `/api/users/*` | User Service | `/user/*` | Yes |
-| `/api/tracking/*` | User Service | `/tracking/*` | Yes |
-| `/api/news/*` | News Service | `/news/*` | Partial |
-| `/api/news/search` | Search Service | `/news/search` | No |
-| `/api/search` | Search Service | `/search` | No |
-| `/api/ai-search` | News Service | `/ai-search` | No |
-| `/api/agents/*` | Agent Config | `/agents/*` | Yes |
-| `/api/skills/*` | Skill Config | `/skills/*` | Yes |
-
-### Authentication
-
-- **Method**: JWT (JSON Web Tokens)
-- **Header**: `Authorization: Bearer <token>`
-- **Token Types**:
-  - Access Token: 7 days (configurable)
-  - Refresh Token: 30 days (configurable)
-- **Alternative**: Firebase tokens (for Google OAuth)
-
----
-
-## Frontend Integration
-
-### API Client Configuration
-
-```typescript
-// frontend/src/api/apiClient.ts
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+```text
+frontend/                 React + Vite 客户端
+backend/gateway/          API 网关
+backend/services/         微服务和后台 worker
+backend/services/shared/  Node / Python 共享运行时代码
+backend/pipeline/         抓取、解析、兼容任务入口
+backend/ai/               文件化 agents / skills
+packages/contracts/       API 契约
+packages/design-tokens/   设计 token
+docs/                     当前有效文档
 ```
 
-### Page to Service Mapping
-
-| Frontend Page | API Endpoint | Service | Auth |
-|---------------|--------------|---------|------|
-| `/login` | `POST /api/auth/login` | User Service | No |
-| `/register` | `POST /api/auth/register` | User Service | No |
-| `/profile` | `GET /api/auth/me` | User Service | Yes |
-| `/profile/edit` | `PUT /api/user/profile` | User Service | Yes |
-| `/news` | `GET /api/news` | News Service | No |
-| `/news/:id` | `GET /api/news/:id` | News Service | No |
-| `/news/search` | `GET /api/news/search` | Search Service | No |
-| `/home/news-push` | `GET /api/user/settings` | User Service | Yes |
-| `/home/targeted-tracking` | `GET /api/tracking/topics` | User Service | Yes |
-
-### State Management
-
-- **Context API**: User authentication state
-- **Local Storage**: JWT tokens, user preferences
-- **Session Storage**: Temporary UI state
-
----
-
-## Development Guide
+## 在线 API 层
 
-### Prerequisites
+| 服务 | 端口 | 职责 |
+| --- | --- | --- |
+| Gateway | 3000 | 唯一公开 API 入口，鉴权并转发请求 |
+| User Service | 3001 | 登录、注册、用户信息、追踪主题、设置 |
+| News Service | 3002 | 新闻列表、详情、状态更新 |
+| Agent Config Service | 3003 | Agent 配置管理 |
+| Skill Config Service | 3004 | Skill 配置管理 |
+| Search Service | 3005 | 搜索、专题聚合、AI 搜索入口 |
 
-- Node.js 18+
-- Python 3.10+
-- MongoDB 7+
-- RabbitMQ 3+ (optional for full stack)
-- Redis 7+ (optional for caching)
+Gateway 公开路径：
 
-### Quick Start
+- `/api/health`: 健康检查，不需要登录。
+- `/api/auth/*`: 登录、注册、刷新 token。
+- `/api/user/*`、`/api/users/*`、`/api/tracking/*`: 用户域。
+- `/api/news/*`、`/api/search/*`、`/api/news/search/*`、`/api/ai-search/*`: 需要 JWT。
+- `/api/agents/*`、`/api/skills/*`: 需要 JWT。
 
-```bash
-# Install dependencies
-npm install
-cd frontend && npm install
-cd ../backend && npm install
-pip install -r backend/requirements.txt
+## 后台新闻流水线
 
-# Start all services
-npm run dev
-```
+| 服务 | 职责 |
+| --- | --- |
+| Scheduler | 周期性发布抓取和关键词搜索任务 |
+| News Scraper | 抓 RSS、页面内容和来源元数据 |
+| Content Processing | 清洗正文、分类、标准化为 raw news |
+| AI Dispatcher | 分发 AI 分析任务 |
+| AI Analysis | 摘要、偏见检测、评分、最终入库 |
+| Notification | 消费通知任务并投递 |
 
-This command:
-1. Starts MongoDB (if installed locally)
-2. Starts RabbitMQ (if installed locally)
-3. Starts all Node.js microservices
-4. Starts Python services
-5. Starts frontend dev server
+核心队列：
 
-### Individual Service Commands
-
-```bash
-# Gateway only
-npm --prefix backend run start:gateway
+- `news_crawl_trigger_queue`
+- `news_raw_queue`
+- `ai_tasks_queue`
+- `notification_queue`
 
-# User service only
-npm --prefix backend run start:user-service
+## 数据存储
 
-# News service only
-npm --prefix backend run start:news-service
+MongoDB 是主存储，主要集合包括：
 
-# Frontend only
-npm --prefix frontend run dev
-```
+- 用户、认证和设置。
+- 追踪主题和推送设置。
+- 抓取来源、发现记录、raw news。
+- AI 分析结果和最终新闻记录。
+- Agent / Skill 配置。
 
-### Health Check
+RabbitMQ 负责 worker 解耦和重试。Redis 当前作为缓存基础设施保留。
 
-```bash
-# Check all services
-curl http://localhost:3000/api/health
+## 认证模型
 
-# Expected response
-{
-  "status": "ok",
-  "services": [
-    {"name": "user-service", "ok": true, "status": 200},
-    {"name": "news-service", "ok": true, "status": 200},
-    ...
-  ],
-  "time": "2026-04-27T10:00:00.000Z"
-}
-```
+前端路由由 `ProtectedRoute` 保护；后端业务 API 由 Gateway 校验 Bearer JWT。用户即使直接访问 `/home` 或 `/news`，也会被前端重定向到登录页；直接调用新闻 API 会返回 `401 Unauthorized`。
 
-### Environment Variables
+详见 [AUTH.md](AUTH.md)。
 
-Create `.env` files in `backend/` and `frontend/`:
+## LLM 模型抽象
 
-**backend/.env**:
-```env
-# Database
-MONGODB_URI=mongodb://localhost:27017/coregistnews
+Python worker 统一通过 `backend/services/shared/python/llm.py` 调用模型。当前支持：
 
-# JWT Secrets
-JWT_SECRET=your-secret-key
-JWT_REFRESH_SECRET=your-refresh-secret
+- `openai-compatible`: `/chat/completions` 兼容接口，覆盖大多数云模型网关、自托管 vLLM / SGLang / TGI、Ollama `/v1`。
+- `anthropic`: Anthropic `/v1/messages`。
+- `mock`: 本地调试占位。
 
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-
-# AI Services
-OPENAI_API_KEY=your-openai-key
-GEMINI_API_KEY=your-gemini-key
-
-# Message Queue
-RABBITMQ_URL=amqp://localhost:5672
-
-# Redis
-REDIS_URL=redis://localhost:6379
-```
-
-**frontend/.env**:
-```env
-VITE_API_URL=http://localhost:3000/api
-VITE_GOOGLE_CLIENT_ID=your-google-client-id
-```
-
----
-
-## Deployment
-
-### Docker Deployment
-
-```bash
-# Build and start all services
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f
-
-# Stop all services
-docker-compose down
-```
-
-### Production Considerations
-
-1. **Environment Variables**: Use production secrets
-2. **Database**: Use MongoDB Atlas or managed MongoDB
-3. **Message Queue**: Use CloudAMQP or managed RabbitMQ
-4. **Caching**: Use Redis Cloud or managed Redis
-5. **Frontend**: Build and serve static files via CDN
-6. **API Gateway**: Use NGINX or cloud load balancer
-7. **SSL/TLS**: Enable HTTPS for all services
-8. **Monitoring**: Set up logging and alerting
-
-### Scaling Strategy
-
-- **Horizontal Scaling**: Run multiple instances of each service
-- **Load Balancing**: Use NGINX or cloud load balancer
-- **Database**: MongoDB replica sets for high availability
-- **Caching**: Redis cluster for distributed caching
-- **Message Queue**: RabbitMQ cluster for reliability
-
----
-
-## Legacy Components
-
-### backend/legacy/server.js
-
-**Status**: Deprecated, kept for rollback only  
-**Purpose**: Original monolithic server  
-**Usage**: Do NOT add new features here
-
-The legacy server is preserved for:
-- Emergency rollback
-- Debugging and comparison
-- Historical reference
-
-All new development should use the microservices architecture.
-
----
-
-## Migration Notes
-
-### Completed Migrations
-
-✅ Authentication → User Service  
-✅ User profiles → User Service  
-✅ User settings → User Service  
-✅ Tracking topics → User Service  
-✅ News CRUD → News Service  
-✅ News search → Search Service  
-✅ AI search → News Service  
-
-### Architecture Evolution
-
-1. **Phase 1** (2024): Monolithic server (`backend/server.js`)
-2. **Phase 2** (2025): Gateway + microservices split
-3. **Phase 3** (2026): Python services for AI/scraping
-4. **Current**: Fully microservices architecture
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: Services can't connect to MongoDB  
-**Solution**: Check `MONGODB_URI` in `.env`, ensure MongoDB is running
-
-**Issue**: Frontend shows 502 errors  
-**Solution**: Verify all backend services are running via `/api/health`
-
-**Issue**: Python services fail to start  
-**Solution**: Install dependencies: `pip install -r backend/requirements.txt`
-
-**Issue**: RabbitMQ connection errors  
-**Solution**: Start RabbitMQ or set `RABBITMQ_URL` to cloud instance
-
-### Debug Commands
-
-```bash
-# Check service status
-curl http://localhost:3000/api/health
-
-# Check MongoDB connection
-mongosh mongodb://localhost:27017/coregistnews
-
-# Check RabbitMQ
-rabbitmqctl status
-
-# Check Redis
-redis-cli ping
-
-# View service logs
-docker-compose logs -f [service-name]
-```
-
----
-
-## Contributing
-
-### Code Organization
-
-```
-coregist-news/
-├── frontend/              # React frontend
-│   ├── src/
-│   │   ├── api/          # API clients
-│   │   ├── features/     # Feature modules
-│   │   ├── shared/       # Shared components
-│   │   └── app/          # App entry
-│   └── package.json
-├── backend/
-│   ├── gateway/          # API Gateway
-│   ├── services/         # Microservices
-│   │   ├── user-service/
-│   │   ├── news-service/
-│   │   └── search-service/
-│   ├── pipeline/         # Scraping & processing
-│   ├── ai/              # AI agents & skills
-│   ├── models/          # Shared data models
-│   └── legacy/          # Deprecated monolith
-├── docs/                # Documentation
-└── packages/            # Shared packages
-```
-
-### Development Workflow
-
-1. Create feature branch from `main`
-2. Develop and test locally
-3. Run health checks: `curl http://localhost:3000/api/health`
-4. Commit with descriptive messages
-5. Create pull request
-6. Code review and merge
-
----
-
-## References
-
-- [Frontend Documentation](./frontend/README.md)
-- [Backend Documentation](./backend/README.md)
-- [API Documentation](./api/README.md)
-- [Deployment Guide](./runbooks/DEPLOYMENT.md)
-
----
-
-**For questions or issues, please contact the development team.**
+详见 [LLM.md](LLM.md)。

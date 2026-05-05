@@ -1,21 +1,21 @@
 # @coregist/contracts
 
-Shared API contracts for CoreGist News.
+共享 API 契约包，用于沉淀前后端共同依赖的 DTO、路径常量和类型定义。
 
-## Current scope
-- auth DTOs
-- user/profile/settings DTOs
-- news DTOs
-- tracking DTOs
-- AI search DTOs
-- agent/skill config DTOs
-- API path constants
+## 范围
 
-## Intended consumers
-- `frontend/` Web client
-- future native app client
-- backend gateway/service adapters
+- Auth DTO。
+- User / Profile / Settings DTO。
+- News DTO。
+- Tracking DTO。
+- AI Search DTO。
+- Agent / Skill Config DTO。
+- API path constants。
 
-## Migration note
-This package is now the source-of-truth target for repeated frontend DTOs.
-The current frontend still contains duplicated local types and should be migrated gradually.
+## 使用者
+
+- `frontend/` Web 客户端。
+- `backend/gateway/` 和各业务服务。
+- 后续移动端或外部客户端。
+
+当前前端仍存在部分本地类型，新增或修改 API 时应逐步迁移到本包。

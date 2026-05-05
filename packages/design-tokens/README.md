@@ -1,16 +1,18 @@
 # @coregist/design-tokens
 
-Shared visual tokens for CoreGist News.
+共享视觉 token 包，用于统一 Web 和后续客户端的主题基础。
 
-## Current scope
-- light/dark semantic themes
-- spacing scale
-- radius scale
-- shadow presets
-- typography presets
-- CSS variable maps for web
+## 范围
 
-## Intended consumers
-- `frontend/` web styles
-- future native app theme adapters
-- design system documentation
+- Light / dark semantic themes。
+- Spacing scale。
+- Radius scale。
+- Shadow presets。
+- Typography presets。
+- Web CSS variable maps。
+
+## 使用者
+
+- `frontend/` Web 样式。
+- 后续移动端主题适配。
+- 设计系统文档和 Figma token 同步。
