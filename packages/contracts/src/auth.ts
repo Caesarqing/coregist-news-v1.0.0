@@ -70,6 +70,7 @@ export interface AuthenticatedUserProfile extends UserSummary {
   birthday?: string;
   avatar?: string;
   pushSettings?: PushSettings;
+  pushSettingsList?: PushSettingsEntry[];
   language?: LanguageCode;
   createdAt?: string;
   updatedAt?: string;
@@ -81,4 +82,10 @@ export interface PushSettings {
   pushCount: number;
   everyday: boolean;
   keywords: string[];
+}
+
+export interface PushSettingsEntry extends PushSettings {
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

@@ -4,6 +4,7 @@ import type {
   ChangePasswordRequest,
   LoginRequest,
   NewsItem,
+  PushSettingsEntry,
   PushSettings,
   TrackingAnalyticsData,
   TrackingNewsItem,
@@ -44,6 +45,7 @@ export type UserPasswordChange = ChangePasswordRequest;
 export type {
   AuthResult,
   NewsItem,
+  PushSettingsEntry,
   PushSettings,
   TrackingAnalyticsData,
   TrackingNewsItem,

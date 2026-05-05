@@ -15,6 +15,7 @@ import type {
   UpdateProfileRequest,
   UpdateUserSettingsResponse,
   PushSettings,
+  PushSettingsEntry,
 } from '@coregist/contracts';
 import { API_PATHS } from '@coregist/contracts';
 
@@ -437,6 +438,10 @@ export const userSettingsApi = {
   // 更新用户推送设置
   async updateSettings(pushSettings: PushSettings): Promise<UpdateUserSettingsResponse> {
     return apiClient.put<UpdateUserSettingsResponse>(API_PATHS.user.settings, { pushSettings });
+  },
+
+  async updatePushSettingsList(pushSettingsList: PushSettingsEntry[]): Promise<UpdateUserSettingsResponse> {
+    return apiClient.put<UpdateUserSettingsResponse>(API_PATHS.user.settings, { pushSettingsList });
   },
 
   // 更新用户语言设置

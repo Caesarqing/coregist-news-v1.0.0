@@ -106,8 +106,11 @@ async function resolveAiQuery(userId, query) {
   const trimmedQuery = (query || '').toString().trim();
   if (trimmedQuery) return trimmedQuery;
   if (!userId) return '';
-  const user = await User.findById(userId).select('pushSettings').lean();
-  const keywords = user?.pushSettings?.keywords || [];
+  const user = await User.findById(userId).select('pushSettings pushSettingsList').lean();
+  const listKeywords = Array.isArray(user?.pushSettingsList)
+    ? user.pushSettingsList.flatMap((entry) => entry?.keywords || [])
+    : [];
+  const keywords = listKeywords.length > 0 ? listKeywords : (user?.pushSettings?.keywords || []);
   return keywords.join(' ');
 }
 

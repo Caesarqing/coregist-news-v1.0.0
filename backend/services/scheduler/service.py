@@ -70,27 +70,37 @@ class SchedulerService:
                 )
         with mongo_collection("users") as users_collection:
             users = list(users_collection.find(
-                {"pushSettings.keywords.0": {"$exists": True}},
-                {"pushSettings": 1},
+                {
+                    "$or": [
+                        {"pushSettings.keywords.0": {"$exists": True}},
+                        {"pushSettingsList.0": {"$exists": True}},
+                    ],
+                },
+                {"pushSettings": 1, "pushSettingsList": 1},
             ))
 
         for user in users:
-            push_settings = user.get("pushSettings") or {}
-            keywords = [str(item).strip() for item in push_settings.get("keywords", []) if str(item).strip()]
-            if not keywords or not self._is_push_due(push_settings, now):
-                continue
-            due_user_ids.add(str(user["_id"]))
-            job_id = f"scheduled:{user['_id']}:{now.strftime('%Y%m%d%H%M')}"
-            _create_job_doc(job_id, str(user["_id"]), " ".join(keywords), keywords, "push_settings")
-            self.queue.publish(QUEUE_KEYWORD_SEARCH, {
-                "job_id": job_id,
-                "user_id": str(user["_id"]),
-                "mode": "ai",
-                "query": " ".join(keywords),
-                "keywords": keywords,
-                "filters": {},
-                "source_type": "push_settings",
-            })
+            user_id = str(user["_id"])
+            entries = user.get("pushSettingsList") or []
+            if not entries and user.get("pushSettings"):
+                entries = [user.get("pushSettings") or {}]
+            for index, push_settings in enumerate(entries):
+                keywords = [str(item).strip() for item in push_settings.get("keywords", []) if str(item).strip()]
+                if not keywords or not self._is_push_due(push_settings, now):
+                    continue
+                due_user_ids.add(user_id)
+                entry_id = str(push_settings.get("_id") or push_settings.get("id") or index)
+                job_id = f"scheduled:{user_id}:{entry_id}:{now.strftime('%Y%m%d%H%M')}"
+                _create_job_doc(job_id, user_id, " ".join(keywords), keywords, "push_settings")
+                self.queue.publish(QUEUE_KEYWORD_SEARCH, {
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "mode": "ai",
+                    "query": " ".join(keywords),
+                    "keywords": keywords,
+                    "filters": {},
+                    "source_type": "push_settings",
+                })
 
         with mongo_collection("trackingtopics") as tracking_collection:
             topics = list(tracking_collection.find(

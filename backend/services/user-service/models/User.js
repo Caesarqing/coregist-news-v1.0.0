@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 
+const pushSettingsSchema = new mongoose.Schema({
+  pushDays: { type: [String], default: ['monday', 'wednesday', 'friday'] },
+  pushTimes: { type: [String], default: ['08:00', '18:00'] },
+  pushCount: { type: Number, default: 5, min: 1, max: 20 },
+  everyday: { type: Boolean, default: false },
+  keywords: { type: [String], default: [] },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   username: { type: String, required: true, unique: true, trim: true, lowercase: true },
@@ -17,6 +27,7 @@ const userSchema = new mongoose.Schema({
     everyday: { type: Boolean, default: false },
     keywords: { type: [String], default: [] },
   },
+  pushSettingsList: { type: [pushSettingsSchema], default: [] },
   language: { type: String, default: 'zh-CN', enum: ['zh-CN', 'en'] },
   isAdmin: { type: Boolean, default: false },
   is_superuser: { type: Boolean, default: false },

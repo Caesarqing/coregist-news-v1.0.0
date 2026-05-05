@@ -7,7 +7,7 @@ import { Checkbox } from '~/shared/ui/checkbox';
 import { Zap, Clock, TrendingUp, X, Calendar, Grid, List, Hash, CheckCircle2, ArrowRight, ArrowLeft, Trash2 } from 'lucide-react';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { userSettingsApi } from '~/api/apiClient';
-import type { PushSettings } from '~/types/api';
+import type { PushSettings, PushSettingsEntry } from '~/types/api';
 import { motion } from 'framer-motion';
 import { PageHero } from '~/shared/components/PageHero';
 
@@ -58,24 +58,26 @@ export function NewsPushPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [keywordError, setKeywordError] = useState('');
 
-  const loadLocalCachedSettings = () => {
+  const loadLocalCachedEntries = (): PushSettingsEntry[] | null => {
     try {
       const raw = localStorage.getItem(LOCAL_PUSH_SETTINGS_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.pushSettings) return null;
-      return parsed.pushSettings as PushSettings;
+      if (!parsed) return null;
+      if (Array.isArray(parsed.pushSettingsList)) return parsed.pushSettingsList as PushSettingsEntry[];
+      if (parsed.pushSettings) return [parsed.pushSettings as PushSettingsEntry];
+      return null;
     } catch {
       return null;
     }
   };
 
-  const saveLocalCachedSettings = (settings: PushSettings) => {
+  const saveLocalCachedEntries = (entries: PushSettingsEntry[]) => {
     try {
       localStorage.setItem(
         LOCAL_PUSH_SETTINGS_KEY,
         JSON.stringify({
-          pushSettings: settings,
+          pushSettingsList: entries,
           savedAt: new Date().toISOString(),
         })
       );
@@ -110,18 +112,39 @@ export function NewsPushPage() {
     { value: 'everyday', label: t('everyday') },
   ];
 
-  const buildEntryFromSettings = (settings: PushSettings, keywordList: string[]): PushEntry | null => {
+  const buildEntryFromSettings = (settings: PushSettings, keywordList: string[], id?: string, createdAt?: string): PushEntry | null => {
     if (!keywordList || keywordList.length === 0) return null;
     return {
-      id: 'default',
+      id: id || `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       keywords: keywordList,
       pushDays: settings.pushDays,
       pushTimes: settings.pushTimes,
       pushCount: settings.pushCount,
       everyday: settings.everyday,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: createdAt
+        ? new Date(createdAt).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
     };
   };
+
+  const mapPushSettingsEntry = (entry: PushSettingsEntry, index: number): PushEntry | null => {
+    return buildEntryFromSettings(
+      entry,
+      entry.keywords || [],
+      entry.id || `entry-${index}`,
+      entry.createdAt
+    );
+  };
+
+  const serializePushEntry = (entry: PushEntry): PushSettingsEntry => ({
+    id: entry.id.startsWith('local-') ? undefined : entry.id,
+    pushDays: entry.pushDays,
+    pushTimes: entry.pushTimes,
+    pushCount: entry.pushCount,
+    everyday: entry.everyday,
+    keywords: entry.keywords,
+    createdAt: entry.createdAt,
+  });
 
   // 从 API 加载设置
   useEffect(() => {
@@ -129,36 +152,25 @@ export function NewsPushPage() {
       try {
         setIsLoading(true);
         const result = await userSettingsApi.getSettings();
-        if (result.pushSettings) {
-          setPushSettings(result.pushSettings);
-          setCustomCount(result.pushSettings.pushCount.toString());
+        const savedEntries = (result.pushSettingsList || [])
+          .map(mapPushSettingsEntry)
+          .filter(Boolean) as PushEntry[];
+        if (savedEntries.length > 0) {
+          setPushEntries(savedEntries);
+          saveLocalCachedEntries(savedEntries.map(serializePushEntry));
+        } else if (result.pushSettings) {
           const keywordList = result.pushSettings.keywords || [];
-          setKeywords(
-            keywordList.map((kw, i) => ({
-              id: `kw-${i}-${Date.now()}`,
-              keyword: kw,
-              createdAt: new Date().toISOString().split('T')[0],
-            }))
-          );
-          const entry = buildEntryFromSettings(result.pushSettings, keywordList);
+          const entry = buildEntryFromSettings(result.pushSettings, keywordList, 'legacy');
           setPushEntries(entry ? [entry] : []);
         }
       } catch {
         // 未登录或加载失败，尝试回退本地缓存
-        const cached = loadLocalCachedSettings();
-        if (cached) {
-          setPushSettings(cached);
-          setCustomCount(cached.pushCount.toString());
-          const keywordList = cached.keywords || [];
-          setKeywords(
-            keywordList.map((kw, i) => ({
-              id: `kw-local-${i}-${Date.now()}`,
-              keyword: kw,
-              createdAt: new Date().toISOString().split('T')[0],
-            }))
-          );
-          const entry = buildEntryFromSettings(cached, keywordList);
-          setPushEntries(entry ? [entry] : []);
+        const cachedEntries = loadLocalCachedEntries();
+        if (cachedEntries) {
+          const entries = cachedEntries
+            .map(mapPushSettingsEntry)
+            .filter(Boolean) as PushEntry[];
+          setPushEntries(entries);
         }
       } finally {
         setIsLoading(false);
@@ -269,16 +281,18 @@ export function NewsPushPage() {
 
     try {
       setIsSaving(true);
-      const result = await userSettingsApi.updateSettings(completeSettings);
-      const savedSettings = result?.pushSettings || completeSettings;
-      const entry = buildEntryFromSettings(savedSettings, keywordStrings);
+      const nextSettingsList = [
+        ...pushEntries.map(serializePushEntry),
+        completeSettings,
+      ];
+      const result = await userSettingsApi.updatePushSettingsList(nextSettingsList);
+      const savedSettingsList = result?.pushSettingsList || nextSettingsList;
+      const savedEntries = savedSettingsList
+        .map(mapPushSettingsEntry)
+        .filter(Boolean) as PushEntry[];
 
-      if (result?.pushSettings) {
-        saveLocalCachedSettings(result.pushSettings);
-      } else {
-        saveLocalCachedSettings(completeSettings);
-      }
-      setPushEntries(entry ? [entry] : []);
+      saveLocalCachedEntries(savedSettingsList);
+      setPushEntries(savedEntries);
       resetSettingsForm();
       setActiveSection('my-news');
       navigate('/home/news-push?tab=my-news');
@@ -293,10 +307,10 @@ export function NewsPushPage() {
       }
 
       // 非鉴权错误时，允许本地保存，保证“我的新闻”可用
-      setPushSettings(completeSettings);
-      saveLocalCachedSettings(completeSettings);
-      const entry = buildEntryFromSettings(completeSettings, keywordStrings);
-      setPushEntries(entry ? [entry] : []);
+      const localEntry = buildEntryFromSettings(completeSettings, keywordStrings);
+      const nextEntries = localEntry ? [...pushEntries, localEntry] : pushEntries;
+      saveLocalCachedEntries(nextEntries.map(serializePushEntry));
+      setPushEntries(nextEntries);
       resetSettingsForm();
       setActiveSection('my-news');
       navigate('/home/news-push?tab=my-news');
@@ -306,8 +320,21 @@ export function NewsPushPage() {
     }
   };
 
-  const handleDeletePush = (id: string) => {
-    setPushEntries((prev) => prev.filter((p) => p.id !== id));
+  const handleDeletePush = async (id: string) => {
+    const nextEntries = pushEntries.filter((p) => p.id !== id);
+    setPushEntries(nextEntries);
+    saveLocalCachedEntries(nextEntries.map(serializePushEntry));
+    try {
+      await userSettingsApi.updatePushSettingsList(nextEntries.map(serializePushEntry));
+    } catch (err: any) {
+      const msg = (err?.message || '').toLowerCase();
+      const isUnauthorized = msg.includes('unauthorized') || msg.includes('401');
+      if (isUnauthorized) {
+        localStorage.removeItem('access_token');
+        alert(language === 'zh-CN' ? '登录状态已失效，请重新登录后再删除。' : 'Session expired. Please log in again.');
+        navigate('/login');
+      }
+    }
     if (selectedEntryId === id) {
       navigate('/home/news-push?tab=my-news');
     }
