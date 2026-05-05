@@ -59,7 +59,7 @@ This checklist captures the final closure state for the CoreGist News repository
 
 ## 5. LLM Provider Closure
 External model calls now go through the Python provider adapter:
-- OpenAI-compatible `/chat/completions` APIs, including DMAX, OpenRouter, Ollama `/v1`, and compatible hosted gateways.
+- OpenAI-compatible `/chat/completions` APIs, including Ollama `/v1`, self-hosted servers, and compatible hosted gateways.
 - Anthropic native `/v1/messages`.
 
 Removed or disabled provider paths:
@@ -163,7 +163,7 @@ Validated during final closure:
 - frontend production build passed
 - unified search path executed end-to-end
 - compatibility search endpoints still worked
-- DMAX provider invocation succeeded in Node and Python paths
+- unified Python LLM provider invocation succeeded
 - repository runtime folders removed after shutdown
 
 ## 9. Intentional Preservations
@@ -175,8 +175,8 @@ The following were intentionally preserved because they are not LLM-provider res
 
 ## 10. Optional Next Steps
 These are not closure blockers, only future work options:
-- tune DMAX prompts for better multilingual title/summary quality
-- add a new provider beside `dmxapi` and `openrouter`
+- tune LLM prompts for better multilingual title/summary quality
+- add provider-specific request tuning behind the common LLM interface
 - add domain-specific extraction rules for more sources
 - add stronger dedupe/index rules for `discovery_news`
 - export this checklist into project management / handoff docs if needed

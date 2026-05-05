@@ -7,8 +7,8 @@ The AI analysis pipeline is now split into two calls:
 
 ## Recommended default
 
-- Self-hosted primary model: `Llama-3.3-70B-Instruct`
-- Review model: `Gemini 2.5 Flash` or `gpt-4o-mini`
+- Any OpenAI-compatible endpoint for the primary model, such as vLLM, SGLang, TGI, Ollama `/v1`, or a hosted compatible gateway.
+- Anthropic-compatible endpoints can be selected with `LLM_PROVIDER=anthropic`.
 
 ## Run with Docker Compose
 
@@ -25,15 +25,17 @@ HF_TOKEN=...
 LLM_MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
 LLM_TENSOR_PARALLEL_SIZE=4
 LLM_GPU_COUNT=all
-AI_CONTENT_MODEL=openai_compatible
-AI_CONTENT_REMOTE_MODEL=Llama-3.3-70B-Instruct
-AI_CONTENT_BASE_URL=http://llama33-vllm:8000/v1
-AI_REVIEW_MODEL=gemini-2.5-flash
-GEMINI_API_KEY=...
+LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=http://llama33-vllm:8000/v1
+LLM_API_KEY=
+LLM_MODEL=Llama-3.3-70B-Instruct
+LLM_JSON_MODE=true
+AI_CONTENT_MODEL=openai-compatible
+AI_REVIEW_MODEL=openai-compatible
 ```
 
 ## Notes
 
 - `docker-compose.llm.yml` assumes an NVIDIA GPU runtime.
-- If you use another OpenAI-compatible server such as `SGLang` or `TGI`, keep `AI_CONTENT_MODEL=openai_compatible` and only change `AI_CONTENT_BASE_URL` and `AI_CONTENT_REMOTE_MODEL`.
-- If you want both stages self-hosted, point `AI_REVIEW_MODEL=openai_compatible` and set `AI_REVIEW_BASE_URL` and `AI_REVIEW_REMOTE_MODEL`.
+- If you use another OpenAI-compatible server, keep `LLM_PROVIDER=openai-compatible` and change only `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`.
+- If you need a different model or endpoint for one stage, set `AI_CONTENT_LLM_MODEL` / `AI_CONTENT_BASE_URL` / `AI_CONTENT_API_KEY` or the matching `AI_REVIEW_*` variables.

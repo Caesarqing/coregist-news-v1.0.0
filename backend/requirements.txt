@@ -40,8 +40,7 @@ chardet>=5.2.0
 ##############################
 ### AI/LLM Integration
 ##############################
-# 统一保留 DMAX / OpenRouter 两类远程接口，均通过 requests 调用
-# 如后续接入新的模型供应商，再按需补充
+# 通过 requests 调用 OpenAI-compatible 或 Anthropic 通用接口
 
 # 重试机制
 tenacity>=8.2.0

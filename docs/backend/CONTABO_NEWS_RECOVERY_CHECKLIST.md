@@ -37,14 +37,16 @@ docker compose logs --tail=100 ai-analysis-service
 Confirm API and pipeline services use the same database:
 
 ```bash
-docker compose exec news-service env | grep -E 'MONGODB|DMAX|OPENROUTER|AI_CONTENT|AI_REVIEW'
-docker compose exec ai-analysis-service env | grep -E 'MONGODB|DMAX|OPENROUTER|AI_CONTENT|AI_REVIEW'
+docker compose exec news-service env | grep -E 'MONGODB|LLM_|AI_CONTENT|AI_REVIEW'
+docker compose exec ai-analysis-service env | grep -E 'MONGODB|LLM_|AI_CONTENT|AI_REVIEW'
 ```
 
-At least one LLM path must be configured for AI analysis:
+The default LLM path must be configured for AI analysis:
 
-- `DMAX_API`, or
-- `OPENROUTER_API_KEY` plus `OPENROUTER_MODEL`
+- `LLM_PROVIDER`
+- `LLM_BASE_URL`
+- `LLM_API_KEY`
+- `LLM_MODEL`
 
 ## Deploy
 

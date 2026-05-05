@@ -25,8 +25,6 @@ class LLMProvider:
             "openai": "openai-compatible",
             "openai-compatible": "openai-compatible",
             "openai_compatible": "openai-compatible",
-            "dmax": "openai-compatible",
-            "openrouter": "openai-compatible",
             "ollama": "openai-compatible",
             "anthropic": "anthropic",
             "claude": "anthropic",
@@ -37,18 +35,6 @@ class LLMProvider:
     @staticmethod
     def _provider_env(model_name: str) -> tuple[str, str, str]:
         raw_provider = (model_name or os.getenv("LLM_PROVIDER") or "").strip().lower()
-        if raw_provider.startswith("openrouter"):
-            return (
-                os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip(),
-                os.getenv("OPENROUTER_API_KEY", "").strip(),
-                os.getenv("OPENROUTER_MODEL", "").strip(),
-            )
-        if raw_provider.startswith("dmax"):
-            return (
-                os.getenv("DMAX_BASE_URL", "https://www.dmxapi.cn/v1").strip(),
-                os.getenv("DMAX_API", "").strip(),
-                (os.getenv("DMAX_MODEL") or os.getenv("DMAX_REMOTE_MODEL") or "").strip(),
-            )
         if raw_provider in {"anthropic", "claude"}:
             return (
                 os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").strip(),
@@ -56,9 +42,9 @@ class LLMProvider:
                 os.getenv("ANTHROPIC_MODEL", "").strip(),
             )
         return (
-            os.getenv("LLM_BASE_URL", os.getenv("DMAX_BASE_URL", "https://www.dmxapi.cn/v1")).strip(),
-            os.getenv("LLM_API_KEY", os.getenv("DMAX_API", "")).strip(),
-            (os.getenv("LLM_MODEL") or os.getenv("DMAX_MODEL") or os.getenv("DMAX_REMOTE_MODEL") or "").strip(),
+            os.getenv("LLM_BASE_URL", "").strip(),
+            os.getenv("LLM_API_KEY", "").strip(),
+            os.getenv("LLM_MODEL", "").strip(),
         )
 
     @staticmethod
@@ -76,8 +62,8 @@ class LLMProvider:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = api_key if api_key.lower().startswith("bearer ") else f"Bearer {api_key}"
-        referer = os.getenv("OPENROUTER_HTTP_REFERER", os.getenv("LLM_HTTP_REFERER", "")).strip()
-        title = os.getenv("OPENROUTER_TITLE", os.getenv("LLM_TITLE", "")).strip()
+        referer = os.getenv("LLM_HTTP_REFERER", "").strip()
+        title = os.getenv("LLM_TITLE", "").strip()
         if referer:
             headers["HTTP-Referer"] = referer
         if title:
