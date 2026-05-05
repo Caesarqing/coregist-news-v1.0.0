@@ -69,23 +69,19 @@ export interface AuthenticatedUserProfile extends UserSummary {
   phone?: string;
   birthday?: string;
   avatar?: string;
-  pushSettings?: PushSettings;
   pushSettingsList?: PushSettingsEntry[];
   language?: LanguageCode;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface PushSettings {
+export interface PushSettingsEntry {
+  id?: string;
   pushDays: string[];
   pushTimes: string[];
   pushCount: number;
   everyday: boolean;
   keywords: string[];
-}
-
-export interface PushSettingsEntry extends PushSettings {
-  id?: string;
   createdAt?: string;
   updatedAt?: string;
 }

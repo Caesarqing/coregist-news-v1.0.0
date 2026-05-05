@@ -71,19 +71,14 @@ class SchedulerService:
         with mongo_collection("users") as users_collection:
             users = list(users_collection.find(
                 {
-                    "$or": [
-                        {"pushSettings.keywords.0": {"$exists": True}},
-                        {"pushSettingsList.0": {"$exists": True}},
-                    ],
+                    "pushSettingsList.0": {"$exists": True},
                 },
-                {"pushSettings": 1, "pushSettingsList": 1},
+                {"pushSettingsList": 1},
             ))
 
         for user in users:
             user_id = str(user["_id"])
             entries = user.get("pushSettingsList") or []
-            if not entries and user.get("pushSettings"):
-                entries = [user.get("pushSettings") or {}]
             for index, push_settings in enumerate(entries):
                 keywords = [str(item).strip() for item in push_settings.get("keywords", []) if str(item).strip()]
                 if not keywords or not self._is_push_due(push_settings, now):

@@ -3,7 +3,6 @@ const { authRequired } = require('../../shared/node/auth');
 const {
   buildUserProfileResponse,
   buildUserSettingsResponse,
-  normalizePushSettings,
   normalizePushSettingsList,
 } = require('../services/user-presenters');
 const { sanitizeStringArray } = require('../../shared/node/news-helpers');
@@ -30,7 +29,7 @@ async function updateProfile(req, res) {
     const user = await User.findByIdAndUpdate(req.userId, updateData, {
       new: true,
       runValidators: true,
-    }).select('email username name bio phone birthday avatar_url pushSettings pushSettingsList language createdAt updatedAt');
+    }).select('email username name bio phone birthday avatar_url pushSettingsList language createdAt updatedAt');
 
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
@@ -45,7 +44,7 @@ async function updateProfile(req, res) {
 
 async function getSettings(req, res) {
   try {
-    const user = await User.findById(req.userId).select('pushSettings pushSettingsList language').lean();
+    const user = await User.findById(req.userId).select('pushSettingsList language').lean();
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
     }
@@ -59,19 +58,12 @@ async function getSettings(req, res) {
 
 async function updateSettings(req, res) {
   try {
-    const { pushSettings, pushSettingsList, language } = req.body || {};
+    const { pushSettingsList, language } = req.body || {};
     const updateData = {};
-
-    if (pushSettings) {
-      const normalized = normalizePushSettings(pushSettings, sanitizeStringArray);
-      updateData.pushSettings = normalized;
-      updateData.pushSettingsList = [normalized];
-    }
 
     if (Array.isArray(pushSettingsList)) {
       const normalizedList = normalizePushSettingsList(pushSettingsList, sanitizeStringArray);
       updateData.pushSettingsList = normalizedList;
-      updateData.pushSettings = normalizedList[normalizedList.length - 1] || normalizePushSettings({}, sanitizeStringArray);
     }
 
     if (language && ['zh-CN', 'en'].includes(language)) {
@@ -81,7 +73,7 @@ async function updateSettings(req, res) {
     const user = await User.findByIdAndUpdate(req.userId, { $set: updateData }, {
       new: true,
       runValidators: true,
-    }).select('pushSettings pushSettingsList language');
+    }).select('pushSettingsList language');
 
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
@@ -89,7 +81,6 @@ async function updateSettings(req, res) {
 
     return res.json({
       ok: true,
-      pushSettings: user.pushSettings,
       pushSettingsList: buildUserSettingsResponse(user).pushSettingsList,
       language: user.language,
     });

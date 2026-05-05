@@ -1,5 +1,5 @@
 import type { LanguageCode } from './common';
-import type { AuthenticatedUserProfile, PushSettings, PushSettingsEntry } from './auth';
+import type { AuthenticatedUserProfile, PushSettingsEntry } from './auth';
 
 export interface UpdateProfileRequest {
   name?: string;
@@ -11,20 +11,17 @@ export interface UpdateProfileRequest {
 }
 
 export interface UserSettingsResponse {
-  pushSettings: PushSettings;
-  pushSettingsList?: PushSettingsEntry[];
+  pushSettingsList: PushSettingsEntry[];
   language?: LanguageCode;
 }
 
 export interface UpdateUserSettingsRequest {
-  pushSettings?: PushSettings;
   pushSettingsList?: PushSettingsEntry[];
   language?: LanguageCode;
 }
 
 export interface UpdateUserSettingsResponse {
   ok: boolean;
-  pushSettings?: PushSettings;
   pushSettingsList?: PushSettingsEntry[];
   language?: LanguageCode;
 }

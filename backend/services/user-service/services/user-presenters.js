@@ -1,11 +1,3 @@
-const DEFAULT_PUSH_SETTINGS = {
-  pushDays: ['monday', 'wednesday', 'friday'],
-  pushTimes: ['08:00', '18:00'],
-  pushCount: 5,
-  everyday: false,
-  keywords: [],
-};
-
 function buildUserProfileResponse(user) {
   return {
     id: user._id,
@@ -17,8 +9,7 @@ function buildUserProfileResponse(user) {
     birthday: user.birthday || '',
     avatar: user.avatar_url || '',
     avatar_url: user.avatar_url || '',
-    pushSettings: user.pushSettings,
-    pushSettingsList: normalizeStoredPushSettingsList(user.pushSettingsList, user.pushSettings),
+    pushSettingsList: normalizeStoredPushSettingsList(user.pushSettingsList),
     language: user.language,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -27,20 +18,19 @@ function buildUserProfileResponse(user) {
 
 function buildUserSettingsResponse(user) {
   return {
-    pushSettings: user.pushSettings || { ...DEFAULT_PUSH_SETTINGS },
-    pushSettingsList: normalizeStoredPushSettingsList(user.pushSettingsList, user.pushSettings),
+    pushSettingsList: normalizeStoredPushSettingsList(user.pushSettingsList),
     language: user.language || 'zh-CN',
   };
 }
 
-function normalizePushSettings(pushSettings, sanitizeStringArray) {
-  const parsedPushCount = Number(pushSettings.pushCount);
+function normalizePushSettingsEntry(pushSettingsEntry, sanitizeStringArray) {
+  const parsedPushCount = Number(pushSettingsEntry.pushCount);
   return {
-    pushDays: sanitizeStringArray(pushSettings.pushDays, 7),
-    pushTimes: sanitizeStringArray(pushSettings.pushTimes, 8),
+    pushDays: sanitizeStringArray(pushSettingsEntry.pushDays, 7),
+    pushTimes: sanitizeStringArray(pushSettingsEntry.pushTimes, 8),
     pushCount: Number.isFinite(parsedPushCount) ? Math.max(1, Math.min(20, parsedPushCount)) : 5,
-    everyday: typeof pushSettings.everyday === 'boolean' ? pushSettings.everyday : false,
-    keywords: sanitizeStringArray(pushSettings.keywords, 50),
+    everyday: typeof pushSettingsEntry.everyday === 'boolean' ? pushSettingsEntry.everyday : false,
+    keywords: sanitizeStringArray(pushSettingsEntry.keywords, 50),
   };
 }
 
@@ -58,30 +48,18 @@ function serializePushSettingsEntry(entry) {
   };
 }
 
-function normalizeStoredPushSettingsList(pushSettingsList, legacyPushSettings) {
+function normalizeStoredPushSettingsList(pushSettingsList) {
   const list = Array.isArray(pushSettingsList) ? pushSettingsList : [];
-  const serialized = list
+  return list
     .map(serializePushSettingsEntry)
     .filter((entry) => entry.keywords.length > 0);
-  if (serialized.length > 0) {
-    return serialized;
-  }
-
-  const legacyKeywords = Array.isArray(legacyPushSettings?.keywords) ? legacyPushSettings.keywords : [];
-  if (legacyKeywords.length === 0) {
-    return [];
-  }
-  return [{
-    id: 'legacy',
-    ...legacyPushSettings,
-  }];
 }
 
 function normalizePushSettingsList(pushSettingsList, sanitizeStringArray) {
   if (!Array.isArray(pushSettingsList)) return [];
   return pushSettingsList
     .map((entry) => {
-      const normalized = normalizePushSettings(entry || {}, sanitizeStringArray);
+      const normalized = normalizePushSettingsEntry(entry || {}, sanitizeStringArray);
       const id = (entry?.id || entry?._id || '').toString();
       const stableId = /^[a-f\d]{24}$/i.test(id) ? { _id: id } : {};
       return {
@@ -104,11 +82,10 @@ function buildEmptyTrackingAnalytics() {
 }
 
 module.exports = {
-  DEFAULT_PUSH_SETTINGS,
   buildEmptyTrackingAnalytics,
   buildUserProfileResponse,
   buildUserSettingsResponse,
-  normalizePushSettings,
+  normalizePushSettingsEntry,
   normalizePushSettingsList,
   normalizeStoredPushSettingsList,
 };

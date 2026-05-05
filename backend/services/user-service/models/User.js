@@ -20,13 +20,6 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String, required: false },
   googleId: { type: String, unique: true, sparse: true },
   avatar_url: { type: String, default: '' },
-  pushSettings: {
-    pushDays: { type: [String], default: ['monday', 'wednesday', 'friday'] },
-    pushTimes: { type: [String], default: ['08:00', '18:00'] },
-    pushCount: { type: Number, default: 5, min: 1, max: 20 },
-    everyday: { type: Boolean, default: false },
-    keywords: { type: [String], default: [] },
-  },
   pushSettingsList: { type: [pushSettingsSchema], default: [] },
   language: { type: String, default: 'zh-CN', enum: ['zh-CN', 'en'] },
   isAdmin: { type: Boolean, default: false },

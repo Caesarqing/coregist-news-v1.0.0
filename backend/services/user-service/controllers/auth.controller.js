@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { authRequired, buildAuthResponse, config, issueAuthTokens, verifyFirebaseIdToken, verifyGoogleToken, resolveUserIdFromFirebaseClaims } = require('../../shared/node/auth');
 const User = require('../models/User');
 const { validateUsername } = require('../validators/username');
-const { DEFAULT_PUSH_SETTINGS, buildUserProfileResponse } = require('../services/user-presenters');
+const { buildUserProfileResponse } = require('../services/user-presenters');
 
 async function checkUsername(req, res) {
   try {
@@ -66,7 +66,6 @@ async function register(req, res) {
       username,
       name,
       passwordHash: await bcrypt.hash(password, 10),
-      pushSettings: { ...DEFAULT_PUSH_SETTINGS },
     });
 
     return res.status(201).json(buildAuthResponse(user, issueAuthTokens(user._id)));
@@ -282,7 +281,6 @@ async function googleLogin(req, res) {
         googleId,
         avatar_url: picture || '',
         passwordHash: undefined,
-        pushSettings: { ...DEFAULT_PUSH_SETTINGS },
       });
     }
 
@@ -297,7 +295,7 @@ async function googleLogin(req, res) {
 
 async function me(req, res) {
   try {
-    const user = await User.findById(req.userId).select('email username name bio phone birthday avatar_url pushSettings language createdAt updatedAt');
+    const user = await User.findById(req.userId).select('email username name bio phone birthday avatar_url pushSettingsList language createdAt updatedAt');
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
     }

@@ -169,13 +169,6 @@ async function resolveUserIdFromFirebaseClaims(claims) {
       name: name || username,
       avatar_url: picture || '',
       passwordHash: undefined,
-      pushSettings: {
-        pushDays: ['monday', 'wednesday', 'friday'],
-        pushTimes: ['08:00', '18:00'],
-        pushCount: 5,
-        everyday: false,
-        keywords: [],
-      },
     });
     return user._id.toString();
   }

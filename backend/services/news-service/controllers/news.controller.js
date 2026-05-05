@@ -93,17 +93,22 @@ async function searchNews(req, res) {
   try {
     const userId = getUserIdFromToken(req);
     let userLanguage = '';
-    let userPushSettings = null;
+    let userPushSettingsList = [];
 
     if (userId) {
-      const user = await User.findById(userId).select('pushSettings language').lean();
-      userPushSettings = user?.pushSettings || null;
+      const user = await User.findById(userId).select('pushSettingsList language').lean();
+      userPushSettingsList = Array.isArray(user?.pushSettingsList) ? user.pushSettingsList : [];
       userLanguage = user?.language || '';
     }
 
     const rawKeywords = splitKeywords(req.query.keywords);
-    const keywords = rawKeywords.length > 0 ? rawKeywords : userPushSettings?.keywords || [];
-    let limit = Number(req.query.limit) || userPushSettings?.pushCount || 10;
+    const defaultKeywords = userPushSettingsList.flatMap((entry) => entry?.keywords || []);
+    const maxPushCount = userPushSettingsList.reduce((max, entry) => {
+      const count = Number(entry?.pushCount);
+      return Number.isFinite(count) ? Math.max(max, count) : max;
+    }, 10);
+    const keywords = rawKeywords.length > 0 ? rawKeywords : defaultKeywords;
+    let limit = Number(req.query.limit) || maxPushCount;
     if (!Number.isFinite(limit) || limit <= 0) limit = 10;
     if (limit > 50) limit = 50;
 

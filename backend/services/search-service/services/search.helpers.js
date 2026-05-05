@@ -106,12 +106,11 @@ async function resolveAiQuery(userId, query) {
   const trimmedQuery = (query || '').toString().trim();
   if (trimmedQuery) return trimmedQuery;
   if (!userId) return '';
-  const user = await User.findById(userId).select('pushSettings pushSettingsList').lean();
+  const user = await User.findById(userId).select('pushSettingsList').lean();
   const listKeywords = Array.isArray(user?.pushSettingsList)
     ? user.pushSettingsList.flatMap((entry) => entry?.keywords || [])
     : [];
-  const keywords = listKeywords.length > 0 ? listKeywords : (user?.pushSettings?.keywords || []);
-  return keywords.join(' ');
+  return listKeywords.join(' ');
 }
 
 async function searchCompletedNews({ userId, mode, query, filters, page = 1, limit = 20, preferredLanguage = 'zh-CN' }) {

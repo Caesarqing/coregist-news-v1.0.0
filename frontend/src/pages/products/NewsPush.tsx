@@ -7,7 +7,7 @@ import { Checkbox } from '~/shared/ui/checkbox';
 import { Zap, Clock, TrendingUp, X, Calendar, Grid, List, Hash, CheckCircle2, ArrowRight, ArrowLeft, Trash2 } from 'lucide-react';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { userSettingsApi } from '~/api/apiClient';
-import type { PushSettings, PushSettingsEntry } from '~/types/api';
+import type { PushSettingsEntry } from '~/types/api';
 import { motion } from 'framer-motion';
 import { PageHero } from '~/shared/components/PageHero';
 
@@ -27,7 +27,9 @@ interface PushEntry {
   createdAt: string;
 }
 
-const defaultPushSettings: PushSettings = {
+type PushSettingsForm = Omit<PushSettingsEntry, 'id' | 'createdAt' | 'updatedAt'>;
+
+const defaultPushSettings: PushSettingsForm = {
   pushDays: ['monday', 'wednesday', 'friday'],
   pushTimes: ['08:00', '18:00'],
   pushCount: 5,
@@ -48,7 +50,7 @@ export function NewsPushPage() {
        : 'Customize your personalized news push and never miss content you care about';
   const [keywords, setKeywords] = useState<PushKeyword[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
-  const [pushSettings, setPushSettings] = useState<PushSettings>(defaultPushSettings);
+  const [pushSettings, setPushSettings] = useState<PushSettingsForm>(defaultPushSettings);
   const [newTimeInput, setNewTimeInput] = useState('');
   const [customCount, setCustomCount] = useState('5');
   const [pushEntries, setPushEntries] = useState<PushEntry[]>([]);
@@ -65,7 +67,6 @@ export function NewsPushPage() {
       const parsed = JSON.parse(raw);
       if (!parsed) return null;
       if (Array.isArray(parsed.pushSettingsList)) return parsed.pushSettingsList as PushSettingsEntry[];
-      if (parsed.pushSettings) return [parsed.pushSettings as PushSettingsEntry];
       return null;
     } catch {
       return null;
@@ -112,7 +113,7 @@ export function NewsPushPage() {
     { value: 'everyday', label: t('everyday') },
   ];
 
-  const buildEntryFromSettings = (settings: PushSettings, keywordList: string[], id?: string, createdAt?: string): PushEntry | null => {
+  const buildEntryFromSettings = (settings: PushSettingsForm, keywordList: string[], id?: string, createdAt?: string): PushEntry | null => {
     if (!keywordList || keywordList.length === 0) return null;
     return {
       id: id || `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -158,10 +159,6 @@ export function NewsPushPage() {
         if (savedEntries.length > 0) {
           setPushEntries(savedEntries);
           saveLocalCachedEntries(savedEntries.map(serializePushEntry));
-        } else if (result.pushSettings) {
-          const keywordList = result.pushSettings.keywords || [];
-          const entry = buildEntryFromSettings(result.pushSettings, keywordList, 'legacy');
-          setPushEntries(entry ? [entry] : []);
         }
       } catch {
         // 未登录或加载失败，尝试回退本地缓存
@@ -274,7 +271,7 @@ export function NewsPushPage() {
 
   const handleSaveSettings = async () => {
     const keywordStrings = keywords.map((k) => k.keyword);
-    const completeSettings: PushSettings = {
+    const completeSettings: PushSettingsForm = {
       ...pushSettings,
       keywords: keywordStrings,
     };

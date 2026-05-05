@@ -14,7 +14,6 @@ import type {
   UserSettingsResponse,
   UpdateProfileRequest,
   UpdateUserSettingsResponse,
-  PushSettings,
   PushSettingsEntry,
 } from '@coregist/contracts';
 import { API_PATHS } from '@coregist/contracts';
@@ -279,7 +278,7 @@ export type UserPasswordChange = ChangePasswordRequest;
 export type {
   AuthResult,
   NewsItem,
-  PushSettings,
+  PushSettingsEntry,
   SearchJobSnapshot,
   TrackingAnalyticsData,
   TrackingNewsItem,
@@ -433,11 +432,6 @@ export const userSettingsApi = {
   // 获取用户推送设置
   async getSettings(): Promise<UserSettingsResponse> {
     return apiClient.get<UserSettingsResponse>(API_PATHS.user.settings);
-  },
-
-  // 更新用户推送设置
-  async updateSettings(pushSettings: PushSettings): Promise<UpdateUserSettingsResponse> {
-    return apiClient.put<UpdateUserSettingsResponse>(API_PATHS.user.settings, { pushSettings });
   },
 
   async updatePushSettingsList(pushSettingsList: PushSettingsEntry[]): Promise<UpdateUserSettingsResponse> {
