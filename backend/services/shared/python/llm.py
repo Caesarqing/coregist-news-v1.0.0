@@ -19,6 +19,23 @@ class LLMProvider:
         pass
 
     @staticmethod
+    def _optional_float_env(name: str) -> Optional[float]:
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            return None
+        return float(raw)
+
+    @staticmethod
+    def _json_env(name: str) -> Dict[str, Any]:
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            return {}
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise ValueError(f"{name} must be a JSON object")
+        return value
+
+    @staticmethod
     def _normalise_provider(model_name: str) -> str:
         provider = (model_name or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
         aliases = {
@@ -72,9 +89,25 @@ class LLMProvider:
             "model": remote_model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
-            "max_tokens": max_tokens,
             "stream": False,
         }
+        system_prompt = os.getenv("LLM_SYSTEM_PROMPT", "").strip()
+        if system_prompt:
+            payload["messages"].insert(0, {"role": "system", "content": system_prompt})
+        token_field = os.getenv("LLM_TOKEN_FIELD", "max_tokens").strip() or "max_tokens"
+        if token_field not in {"max_tokens", "max_completion_tokens"}:
+            raise ValueError("LLM_TOKEN_FIELD must be max_tokens or max_completion_tokens")
+        payload[token_field] = max_tokens
+        top_p = LLMProvider._optional_float_env("LLM_TOP_P")
+        frequency_penalty = LLMProvider._optional_float_env("LLM_FREQUENCY_PENALTY")
+        presence_penalty = LLMProvider._optional_float_env("LLM_PRESENCE_PENALTY")
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if frequency_penalty is not None:
+            payload["frequency_penalty"] = frequency_penalty
+        if presence_penalty is not None:
+            payload["presence_penalty"] = presence_penalty
+        payload.update(LLMProvider._json_env("LLM_EXTRA_BODY_JSON"))
         if response_format_json:
             payload["response_format"] = {"type": "json_object"}
         url = f"{base_url.rstrip('/')}/chat/completions"

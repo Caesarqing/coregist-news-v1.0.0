@@ -29,6 +29,43 @@ AI_REVIEW_JSON_MODE=false
 
 如果某个 provider 支持稳定 JSON mode，可以把 `LLM_JSON_MODE`、`AI_CONTENT_JSON_MODE`、`AI_REVIEW_JSON_MODE` 改为 `true`。
 
+可选通用参数：
+
+```env
+LLM_TOKEN_FIELD=max_tokens
+LLM_TOP_P=
+LLM_FREQUENCY_PENALTY=
+LLM_PRESENCE_PENALTY=
+LLM_SYSTEM_PROMPT=
+LLM_EXTRA_BODY_JSON=
+```
+
+`LLM_TOKEN_FIELD` 默认使用 `max_tokens`。如果兼容接口要求 OpenAI 新式字段，可以改为 `max_completion_tokens`。
+
+`LLM_EXTRA_BODY_JSON` 会作为 JSON 对象合并到 `/chat/completions` payload 顶层，用于兼容 provider 特有参数。
+
+## MiMo
+
+MiMo 使用 OpenAI-compatible 方式接入：
+
+```env
+LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=https://api.xiaomimimo.com/v1
+LLM_API_KEY=your-mimo-api-key
+LLM_MODEL=mimo-v2.5-pro
+LLM_JSON_MODE=false
+LLM_TOKEN_FIELD=max_completion_tokens
+LLM_TOP_P=0.95
+LLM_EXTRA_BODY_JSON={"thinking":{"type":"disabled"}}
+
+AI_CONTENT_MODEL=openai-compatible
+AI_REVIEW_MODEL=openai-compatible
+AI_CONTENT_JSON_MODE=false
+AI_REVIEW_JSON_MODE=false
+```
+
+如果要测试其他 MiMo 模型，只需要替换 `LLM_MODEL`。新闻处理依赖文本分类和 JSON 解析，优先使用 chat/text 模型。
+
 ## Ollama
 
 ```env
