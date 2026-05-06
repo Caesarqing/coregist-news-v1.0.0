@@ -406,40 +406,23 @@ def _runtime_default_agents() -> List[Agent]:
         available_skills=["fact_checker", "sentiment_analyzer"],
         ),
         Agent(
-        id="evaluation_agent",
-        name="多维评价代理",
-        description="保留兼容，用于承接历史配置。",
-        agent_type=AgentType.EVALUATION,
-        llm_config={
-            "model": settings.ai_review_model,
-            "remote_model": settings.ai_review_remote_model,
-            "base_url": settings.ai_review_base_url,
-            "api_key": settings.ai_review_api_key,
-            "max_tokens": settings.ai_review_max_tokens,
-            "temperature": settings.ai_review_temperature,
-            "response_format_json": settings.ai_review_json_mode,
-        },
-        prompt_template="请从信息密度、真实性、影响力、传播范围为新闻打分：{content}",
-        available_skills=["knowledge_graph_query", "social_media_monitor"],
-        ),
-        Agent(
-        id="review_agent",
-        name="分析复核代理",
-        description="负责偏向分析、评分和最终复核。",
-        agent_type=AgentType.REVIEW,
-        llm_config={
-            "model": settings.ai_review_model,
-            "remote_model": settings.ai_review_remote_model,
-            "base_url": settings.ai_review_base_url,
-            "api_key": settings.ai_review_api_key,
-            "max_tokens": settings.ai_review_max_tokens,
-            "temperature": settings.ai_review_temperature,
-            "response_format_json": settings.ai_review_json_mode,
-        },
-        prompt_template=(
-            "请结合新闻摘要、事实核查、情绪、知识图谱和传播参考，"
-            "输出 JSON，包含偏向分析、评分和最终复核结论：{payload}"
-        ),
+            id="review_agent",
+            name="分析复核代理",
+            description="负责偏向、事实完整性、情绪倾向和最终复核。",
+            agent_type=AgentType.REVIEW,
+            llm_config={
+                "model": settings.ai_review_model,
+                "remote_model": settings.ai_review_remote_model,
+                "base_url": settings.ai_review_base_url,
+                "api_key": settings.ai_review_api_key,
+                "max_tokens": settings.ai_review_max_tokens,
+                "temperature": settings.ai_review_temperature,
+                "response_format_json": settings.ai_review_json_mode,
+            },
+            prompt_template=(
+                "请结合新闻摘要、事实核查和情绪分析，"
+                "输出 JSON，包含偏向分析、事实完整性、情绪倾向和最终复核结论，不要输出评分字段：{payload}"
+            ),
         ),
         Agent(
         id="scheduler_agent",

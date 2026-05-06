@@ -63,7 +63,7 @@ Gateway 公开路径：
 | News Scraper | 抓 RSS、页面内容和来源元数据 |
 | Content Processing | 清洗正文、分类、标准化为 raw news |
 | AI Dispatcher | 分发 AI 分析任务 |
-| AI Analysis | 摘要、偏见检测、评分、最终入库 |
+| AI Analysis | 摘要、分类复核、偏向/事实/情绪复核、最终入库 |
 | Notification | 消费通知任务并投递 |
 
 核心队列：

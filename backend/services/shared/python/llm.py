@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -34,6 +35,46 @@ class LLMProvider:
         if not isinstance(value, dict):
             raise ValueError(f"{name} must be a JSON object")
         return value
+
+    @staticmethod
+    def _extract_json_object(raw: str) -> Optional[Dict[str, Any]]:
+        text = (raw or "").strip()
+        if not text:
+            return None
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.I | re.S)
+        candidates = [fenced.group(1)] if fenced else []
+        candidates.append(text)
+        start = text.find("{")
+        if start != -1:
+            depth = 0
+            in_string = False
+            escape = False
+            for index, char in enumerate(text[start:], start=start):
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif char == "\\":
+                        escape = True
+                    elif char == '"':
+                        in_string = False
+                    continue
+                if char == '"':
+                    in_string = True
+                elif char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidates.append(text[start:index + 1])
+                        break
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except Exception:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
 
     @staticmethod
     def _normalise_provider(model_name: str) -> str:
@@ -216,16 +257,9 @@ class LLMProvider:
             fallback["_llm_error"] = str(exc)
             fallback["_llm_model"] = model_name
             return fallback
-        try:
-            return json.loads(raw)
-        except Exception:
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    return json.loads(raw[start:end + 1])
-                except Exception:
-                    pass
+        parsed = self._extract_json_object(raw)
+        if parsed is not None:
+            return parsed
         if strict:
             raise ValueError(f"LLM did not return valid JSON for model {model_name}")
         return default.copy() if default else {"raw_text": raw}

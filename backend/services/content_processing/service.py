@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from pipeline.llm.news_prompt import NEWS_CATEGORY_SCHEMA, build_taxonomy_text
+from pipeline.llm.news_category_prompt import NEWS_CATEGORY_SCHEMA, build_taxonomy_text
 from services.shared.python.agent_runtime import build_default_agent_registry, build_default_skillset
 from services.shared.python.llm import LLMProvider
 from services.shared.python.queue import QUEUE_NEWS_RAW, QUEUE_NEWS_READY, QueueClient, mongo_collection
@@ -159,10 +159,25 @@ SUMMARY_BLACKLIST = (
     "推荐阅读",
     "点击查看",
     "来源：",
+    "来源:",
     "原标题",
+    "责任编辑",
+    "发布时间",
+    "发稿时间",
+    "更新时间",
+    "版权",
     "广告",
     "免责声明",
     "分享",
+    "share",
+    "copyright",
+    "all rights reserved",
+)
+
+NOISE_LINE_PATTERNS = (
+    r"^(?:作者|记者|通讯员|编辑|责任编辑|责编|审核|校对|来源|发布时间|发稿时间|更新时间)[:：]",
+    r"^(?:by|author|reporter|editor|source|published|updated)\b",
+    r"(?:copyright|all rights reserved)",
 )
 
 
@@ -203,6 +218,8 @@ class ContentProcessingService:
                 continue
             lower = line.lower()
             if any(token.lower() in lower for token in SUMMARY_BLACKLIST):
+                continue
+            if any(re.search(pattern, line, flags=re.I) for pattern in NOISE_LINE_PATTERNS):
                 continue
             if len(line) <= 2:
                 continue
@@ -505,20 +522,14 @@ class ContentProcessingService:
         duplicate_line_ratio = 0.0
         if lines:
             duplicate_line_ratio = max(0.0, 1 - (len(unique_lines) / len(lines)))
-        noise_markers = (
-            "copyright",
-            "all rights reserved",
-            "相关阅读",
-            "推荐阅读",
-            "分享到",
-            "责任编辑",
-            "广告",
-            "免责声明",
-        )
         noisy_lines = sum(
             1
             for segment in lines
-            if len(segment) <= 120 and any(marker in segment.lower() for marker in noise_markers)
+            if len(segment) <= 160
+            and (
+                any(marker.lower() in segment.lower() for marker in SUMMARY_BLACKLIST)
+                or any(re.search(pattern, segment, flags=re.I) for pattern in NOISE_LINE_PATTERNS)
+            )
         )
         noise_ratio = (noisy_lines / len(lines)) if lines else 0.0
         return {
@@ -545,6 +556,22 @@ class ContentProcessingService:
             and metrics.get("primary_language_ratio", 0) >= 0.5
             and metrics.get("mixed_language_segment_count", 99) <= 6
         )
+
+    @staticmethod
+    def _quality_failure_reason(metrics: dict) -> str:
+        if metrics.get("char_count", 0) < 80 or metrics.get("word_count", 0) < 20:
+            return "quality:too_short"
+        if metrics.get("paragraph_count", 0) < 1:
+            return "quality:no_main_content"
+        if metrics.get("duplicate_line_ratio", 1) > 0.45:
+            return "quality:duplicate_content"
+        if metrics.get("noise_ratio", 1) > 0.35:
+            return "quality:template_noise"
+        if metrics.get("primary_language_ratio", 0) < 0.5:
+            return "quality:language_detection_low_confidence"
+        if metrics.get("mixed_language_segment_count", 99) > 6:
+            return "quality:mixed_language_noise"
+        return "quality:failed"
 
     def process_news(self, payload: dict, *, publish: bool = True) -> dict:
         cleaned = self.skillset.get_skill("text_cleaner").execute(text=payload.get("raw_content", ""))
@@ -632,7 +659,7 @@ class ContentProcessingService:
         news_id = self.raw_news_repo.upsert(raw_doc)
 
         if not self._passes_quality_gate(quality_metrics):
-            failure_reason = "Content quality gate failed"
+            failure_reason = self._quality_failure_reason(quality_metrics)
             self.raw_news_repo.update_status(news_id, {
                 "processing_status": "failed",
                 "last_error": failure_reason,

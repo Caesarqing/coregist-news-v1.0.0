@@ -3,7 +3,7 @@
   "name": "分析复核代理",
   "agent_type": "review",
   "enabled": true,
-  "description": "负责偏向分析、评分和最终复核。",
+  "description": "负责偏向、事实完整性、情绪倾向和最终复核。",
   "version": "1.0.0",
   "llm_profile": "review",
   "available_skills": [],
