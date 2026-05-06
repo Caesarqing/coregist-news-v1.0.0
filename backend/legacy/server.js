@@ -85,6 +85,8 @@ function getPreferredLanguage(req, userLanguage = '') {
   return acceptLanguage.includes('zh') ? 'zh-CN' : 'en';
 }
 
+const RECENT_NEWS_SORT = { processed_at: -1, crawledAt: -1, postedAt: -1, _id: -1 };
+
 function mapNewsDoc(doc, language = 'zh-CN') {
   const raw = doc && typeof doc.toObject === 'function' ? doc.toObject() : doc;
   if (!raw) return null;
@@ -105,7 +107,7 @@ function mapNewsDoc(doc, language = 'zh-CN') {
     summary,
     fullContent: summary,
     category,
-    publishTime: raw.postedAt || raw.crawledAt || null,
+    publishTime: raw.postedAt || raw.processed_at || raw.crawledAt || null,
     source,
     sourceLink: raw.link || '',
     imageUrl: raw.image_link || '',
@@ -952,7 +954,7 @@ app.get('/api/news', async (req, res) => {
 
     const [items, total] = await Promise.all([
       News.find(query)
-        .sort({ postedAt: -1, crawledAt: -1 })
+        .sort(RECENT_NEWS_SORT)
         .skip(skip)
         .limit(limit),
       News.countDocuments(query)
@@ -1190,7 +1192,7 @@ app.get('/api/tracking/topics/:id/news', authRequired, async (req, res) => {
     const user = await User.findById(req.userId).select('language').lean();
     const preferredLanguage = getPreferredLanguage(req, user?.language || '');
     const newsDocs = await News.find(query)
-      .sort({ postedAt: -1, crawledAt: -1 })
+      .sort(RECENT_NEWS_SORT)
       .limit(limit);
 
     const mappedNews = newsDocs
@@ -1363,7 +1365,7 @@ app.get('/api/news/search', async (req, res) => {
 
     // 5) 查询
     const items = await News.find(query)
-      .sort({ postedAt: -1, crawledAt: -1 })
+      .sort(RECENT_NEWS_SORT)
       .limit(limit);
 
     const mappedItems = items.map((item) => mapNewsDoc(item, preferredLanguage)).filter(Boolean);

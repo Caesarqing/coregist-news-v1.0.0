@@ -4,7 +4,13 @@ const mongoose = require('mongoose');
 const News = require('../../../models/News');
 const User = require('../../../models/User');
 const { publish, QUEUE_KEYWORD_SEARCH } = require('../../shared/node/queue');
-const { escapeRegex, getPreferredLanguage, mapNewsDoc, splitKeywords } = require('../../shared/node/news-helpers');
+const {
+  escapeRegex,
+  getPreferredLanguage,
+  mapNewsDoc,
+  RECENT_NEWS_SORT,
+  splitKeywords,
+} = require('../../shared/node/news-helpers');
 const UserSearchJob = require('../models/UserSearchJob');
 const UserDiscoveryNews = require('../models/UserDiscoveryNews');
 const UserNewsMap = require('../models/UserNewsMap');
@@ -135,7 +141,7 @@ async function searchCompletedNews({ userId, mode, query, filters, page = 1, lim
   }
 
   const [items, total] = await Promise.all([
-    News.find(mongoQuery).sort({ postedAt: -1, crawledAt: -1 }).skip(skip).limit(safeLimit),
+    News.find(mongoQuery).sort(RECENT_NEWS_SORT).skip(skip).limit(safeLimit),
     News.countDocuments(mongoQuery),
   ]);
 

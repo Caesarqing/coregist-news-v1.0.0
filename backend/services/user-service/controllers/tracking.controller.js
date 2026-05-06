@@ -9,6 +9,7 @@ const {
   getPreferredLanguage,
   mapNewsDoc,
   mapTrackingTopic,
+  RECENT_NEWS_SORT,
   sanitizeStringArray,
   splitKeywords,
 } = require('../../shared/node/news-helpers');
@@ -101,7 +102,7 @@ async function getTopicNews(req, res) {
 
     const user = await User.findById(req.userId).select('language').lean();
     const preferredLanguage = getPreferredLanguage(req, user?.language || '');
-    const docs = await News.find(query).sort({ postedAt: -1, crawledAt: -1 }).limit(limit);
+    const docs = await News.find(query).sort(RECENT_NEWS_SORT).limit(limit);
 
     const items = docs
       .map((doc) => mapNewsDoc(doc, preferredLanguage))

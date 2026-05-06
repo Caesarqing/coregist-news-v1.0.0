@@ -6,6 +6,7 @@ const {
   escapeRegex,
   getPreferredLanguage,
   mapNewsDoc,
+  RECENT_NEWS_SORT,
   splitKeywords,
 } = require('../../shared/node/news-helpers');
 const News = require('../models/News');
@@ -73,7 +74,7 @@ async function listNews(req, res) {
 
     const preferredLanguage = getPreferredLanguage(req, userLanguage);
     const [items, total] = await Promise.all([
-      News.find(query).sort({ postedAt: -1, crawledAt: -1 }).skip(skip).limit(limit),
+      News.find(query).sort(RECENT_NEWS_SORT).skip(skip).limit(limit),
       News.countDocuments(query),
     ]);
 
@@ -136,7 +137,7 @@ async function searchNews(req, res) {
     }
 
     const preferredLanguage = getPreferredLanguage(req, userLanguage);
-    const items = await News.find(query).sort({ postedAt: -1, crawledAt: -1 }).limit(limit);
+    const items = await News.find(query).sort(RECENT_NEWS_SORT).limit(limit);
     const mappedItems = items.map((item) => mapNewsDoc(item, preferredLanguage)).filter(Boolean);
     return res.json({ items: mappedItems, total: mappedItems.length, limit });
   } catch (error) {

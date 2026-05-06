@@ -515,8 +515,8 @@ class AIAnalysisService:
         image_link = payload.get("image_link") or ""
         if image_fallback_type == "source_logo" or image_source_type == "source_logo":
             image_link = ""
-        posted_at = payload.get("posted_at")
-        crawled_at = payload.get("crawled_at")
+        posted_at = AIAnalysisService._coerce_datetime(payload.get("posted_at"))
+        crawled_at = AIAnalysisService._coerce_datetime(payload.get("crawled_at")) or datetime.utcnow()
         document = {
             "title_en": metadata.get("title_en") or payload.get("title") or "",
             "title_zh": metadata.get("title_zh") or payload.get("title") or "",
@@ -557,6 +557,20 @@ class AIAnalysisService:
             "display_language": metadata.get("display_language", payload.get("display_language", "zh-CN")),
         }
         return document
+
+    @staticmethod
+    def _coerce_datetime(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            return value
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     @classmethod
     def _validate_news_document_for_publish(cls, document: dict) -> None:

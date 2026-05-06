@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 
 from services.ai_analysis.service import AIAnalysisService
 from services.shared.python.llm import LLMProvider
@@ -76,6 +77,25 @@ class SummaryQualityTest(unittest.TestCase):
             self.assertNotIn(key, bundle)
         for key in ["bias_level", "analysis_text", "fact_check", "sentiment", "final_review", "review_label"]:
             self.assertIn(key, bundle)
+
+    def test_news_document_normalizes_sortable_dates(self):
+        document = AIAnalysisService._build_news_document(
+            {
+                "title": "Example",
+                "url": "https://example.com/a",
+                "posted_at": "2026-05-06T13:51:26.871Z",
+                "crawled_at": "",
+            },
+            {
+                "title_en": "Example",
+                "title_zh": "示例新闻",
+                "summary_en": "Example summary.",
+                "summary_zh": "示例摘要。",
+            },
+        )
+
+        self.assertIsInstance(document["postedAt"], datetime)
+        self.assertIsInstance(document["crawledAt"], datetime)
 
 
 if __name__ == "__main__":

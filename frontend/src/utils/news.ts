@@ -54,7 +54,7 @@ export function mapNewsItem(raw: any, options: MapNewsItemOptions): NewsItem {
       ? raw.fullContent_zh || localizedSummary || raw.fullContent || ''
       : raw.fullContent_en || localizedSummary || raw.fullContent || '',
     category: localizedCategory,
-    publishTime: raw.publishTime || raw.postedAt || raw.crawledAt || null,
+    publishTime: raw.publishTime || raw.postedAt || raw.processed_at || raw.crawledAt || null,
     source: localizedSource,
     sourceLink: raw.sourceLink || raw.link || '',
     imageUrl,
