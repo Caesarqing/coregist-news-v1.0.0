@@ -31,11 +31,17 @@ class QueueClient:
         self._connection: Optional[pika.BlockingConnection] = None
         self._channel = None
 
+    def _connection_parameters(self) -> pika.URLParameters:
+        parameters = pika.URLParameters(self.rabbitmq_url)
+        parameters.heartbeat = settings.rabbitmq_heartbeat_seconds
+        parameters.blocked_connection_timeout = settings.rabbitmq_blocked_connection_timeout_seconds
+        return parameters
+
     def connect(self):
         if self._connection and self._connection.is_open and self._channel and self._channel.is_open:
             return self._channel
         self.close()
-        parameters = pika.URLParameters(self.rabbitmq_url)
+        parameters = self._connection_parameters()
         self._connection = pika.BlockingConnection(parameters)
         self._channel = self._connection.channel()
         for queue_name in (
@@ -55,7 +61,7 @@ class QueueClient:
         return self._channel
 
     def publish(self, queue_name: str, payload: dict[str, Any]) -> None:
-        parameters = pika.URLParameters(self.rabbitmq_url)
+        parameters = self._connection_parameters()
         last_error: Exception | None = None
         for attempt in range(1, 4):
             connection = None

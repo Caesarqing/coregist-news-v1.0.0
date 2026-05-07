@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 import requests
 from dotenv import load_dotenv
 
+from services.shared.python.settings import settings
+
 load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
 
 logger = logging.getLogger(__name__)
@@ -205,7 +207,7 @@ class LLMProvider:
         provider = self._normalise_provider(model_name)
         temperature = kwargs.get("temperature", 0.2)
         max_tokens = kwargs.get("max_tokens", 1200)
-        timeout = kwargs.get("timeout", 120)
+        timeout = int(kwargs.get("timeout") or settings.llm_timeout_seconds)
         response_format_json = bool(kwargs.get("response_format_json", False))
         env_base_url, env_api_key, env_remote_model = self._provider_env(model_name)
 
