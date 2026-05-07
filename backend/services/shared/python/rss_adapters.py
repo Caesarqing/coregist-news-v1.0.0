@@ -130,12 +130,36 @@ def _normalize_published(value: Any) -> str | None:
         try:
             dt = parsedate_to_datetime(value)
         except Exception:
-            return None
+            try:
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except Exception:
+                parsed = None
+                for fmt in ("%b %d, %Y %H:%M %Z", "%B %d, %Y %H:%M %Z"):
+                    try:
+                        parsed = datetime.strptime(value, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if parsed is None:
+                    return None
+                dt = parsed.replace(tzinfo=timezone.utc)
     else:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat()
+
+
+def _entry_published_at(entry: Any) -> str | None:
+    for attr in ("published", "updated", "created", "date"):
+        normalized = _normalize_published(getattr(entry, attr, None))
+        if normalized:
+            return normalized
+    for attr in ("published_parsed", "updated_parsed", "created_parsed"):
+        normalized = _normalize_published(getattr(entry, attr, None))
+        if normalized:
+            return normalized
+    return None
 
 
 def _remove_noise_lines(text: str, config: AdapterConfig) -> str:
@@ -261,7 +285,7 @@ def fetch_rss_entries(source: RssSource, max_items: int = 10) -> List[Dict[str, 
             "title": getattr(entry, "title", "") or source.feed_name,
             "url": getattr(entry, "link", ""),
             "description": getattr(entry, "description", ""),
-            "published_at": _normalize_published(getattr(entry, "published", None)),
+            "published_at": _entry_published_at(entry),
             "media": getattr(entry, "media", None),
             "feed_name": source.feed_name,
             "feed_url": source.feed_url,

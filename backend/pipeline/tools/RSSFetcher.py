@@ -85,7 +85,13 @@ def parse_feed(content: str) -> FeedData:
             item = RssItem(
                 title = entry.get("title", "Untitled"),
                 link = entry.get("link", ""),
-                published = entry.get("published_parsed", entry.get("updated_parsed", None)),
+                published = (
+                    entry.get("published_parsed")
+                    or entry.get("updated_parsed")
+                    or entry.get("published")
+                    or entry.get("updated")
+                    or entry.get("date")
+                ),
                 authors = authors,
                 description = sanitize_html(entry.get("description", "")),
                 guid = entry.get("id", ""),
