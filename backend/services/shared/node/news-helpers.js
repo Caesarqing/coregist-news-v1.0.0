@@ -29,7 +29,18 @@ function getPreferredLanguage(req, userLanguage = '') {
   return acceptLanguage.includes('zh') ? 'zh-CN' : 'en';
 }
 
-const RECENT_NEWS_SORT = { processed_at: -1, crawledAt: -1, postedAt: -1, _id: -1 };
+const FRESH_NEWS_WINDOW_HOURS = 72;
+const FRESH_NEWS_WINDOW_MS = FRESH_NEWS_WINDOW_HOURS * 60 * 60 * 1000;
+const RECENT_NEWS_SORT = { postedAt: -1, crawledAt: -1, processed_at: -1, _id: -1 };
+
+function buildFreshNewsFilter(now = new Date()) {
+  return {
+    postedAt: {
+      $gte: new Date(now.getTime() - FRESH_NEWS_WINDOW_MS),
+      $lte: now,
+    },
+  };
+}
 
 function mapNewsDoc(doc, language = 'zh-CN') {
   const raw = doc && typeof doc.toObject === 'function' ? doc.toObject() : doc;
@@ -54,7 +65,7 @@ function mapNewsDoc(doc, language = 'zh-CN') {
     summary,
     fullContent: summary,
     category,
-    publishTime: raw.postedAt || raw.processed_at || raw.crawledAt || null,
+    publishTime: raw.postedAt || raw.crawledAt || null,
     source,
     sourceLink: raw.link || '',
     imageUrl: raw.image_link || '',
@@ -111,7 +122,9 @@ function mapTrackingTopic(topic, newsCount = 0) {
 
 module.exports = {
   buildTopicNewsQuery,
+  buildFreshNewsFilter,
   escapeRegex,
+  FRESH_NEWS_WINDOW_HOURS,
   getPreferredLanguage,
   mapNewsDoc,
   mapTrackingTopic,

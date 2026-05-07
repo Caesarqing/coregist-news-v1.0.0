@@ -60,7 +60,7 @@ newsSchema.index({ link: 1 }, { unique: true });
 newsSchema.index({ canonical_link: 1 }, { unique: true, sparse: true });
 newsSchema.index({ sourceId: 1, title_hash: 1 }, { sparse: true });
 newsSchema.index({ postedAt: -1, crawledAt: -1 });
-newsSchema.index({ processed_at: -1, crawledAt: -1, postedAt: -1 });
+newsSchema.index({ postedAt: -1, crawledAt: -1, processed_at: -1 });
 newsSchema.index({ sourceId: 1, postedAt: -1 });
 newsSchema.index({ search_sources: 1, postedAt: -1 });
 newsSchema.index({ search_categories: 1, postedAt: -1 });

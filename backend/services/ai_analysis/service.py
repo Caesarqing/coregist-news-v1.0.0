@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pipeline.llm.news_summary_prompt import build_prompt as build_summary_prompt
@@ -46,6 +46,8 @@ SUMMARY_NOISE_PATTERNS = (
     r"(?:by|author|reporter|editor|source|published|updated)[:：]",
     r"(?:图|图片|照片|视频|资料图)[:：]",
 )
+
+FRESH_NEWS_WINDOW_HOURS = 72
 
 
 class AIAnalysisService:
@@ -516,7 +518,7 @@ class AIAnalysisService:
         if image_fallback_type == "source_logo" or image_source_type == "source_logo":
             image_link = ""
         posted_at = AIAnalysisService._coerce_datetime(payload.get("posted_at"))
-        crawled_at = AIAnalysisService._coerce_datetime(payload.get("crawled_at")) or datetime.utcnow()
+        crawled_at = AIAnalysisService._coerce_datetime(payload.get("crawled_at")) or AIAnalysisService._utc_now()
         document = {
             "title_en": metadata.get("title_en") or payload.get("title") or "",
             "title_zh": metadata.get("title_zh") or payload.get("title") or "",
@@ -561,19 +563,38 @@ class AIAnalysisService:
     @staticmethod
     def _coerce_datetime(value: Any) -> datetime | None:
         if isinstance(value, datetime):
-            return value
+            parsed = value
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         if not value:
             return None
         text = str(value).strip()
         if not text:
             return None
         try:
-            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         except ValueError:
             return None
 
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    @staticmethod
+    def _is_recent_posted_at(posted_at: datetime | None, *, now: datetime | None = None) -> bool:
+        if posted_at is None:
+            return False
+        current = now or AIAnalysisService._utc_now()
+        return current - timedelta(hours=FRESH_NEWS_WINDOW_HOURS) <= posted_at <= current + timedelta(minutes=5)
+
     @classmethod
     def _validate_news_document_for_publish(cls, document: dict) -> None:
+        if not cls._is_recent_posted_at(document.get("postedAt")):
+            raise ValueError("quality:stale_or_missing_publish_time")
         if not cls._has_valid_chinese_fields(document):
             raise ValueError("Refusing to publish news with non-Chinese title_zh/summary_zh")
         if not cls._has_valid_english_fields(document):

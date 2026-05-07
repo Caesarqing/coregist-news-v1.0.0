@@ -85,7 +85,17 @@ function getPreferredLanguage(req, userLanguage = '') {
   return acceptLanguage.includes('zh') ? 'zh-CN' : 'en';
 }
 
-const RECENT_NEWS_SORT = { processed_at: -1, crawledAt: -1, postedAt: -1, _id: -1 };
+const FRESH_NEWS_WINDOW_MS = 72 * 60 * 60 * 1000;
+const RECENT_NEWS_SORT = { postedAt: -1, crawledAt: -1, processed_at: -1, _id: -1 };
+
+function buildFreshNewsFilter(now = new Date()) {
+  return {
+    postedAt: {
+      $gte: new Date(now.getTime() - FRESH_NEWS_WINDOW_MS),
+      $lte: now,
+    },
+  };
+}
 
 function mapNewsDoc(doc, language = 'zh-CN') {
   const raw = doc && typeof doc.toObject === 'function' ? doc.toObject() : doc;
@@ -107,7 +117,7 @@ function mapNewsDoc(doc, language = 'zh-CN') {
     summary,
     fullContent: summary,
     category,
-    publishTime: raw.postedAt || raw.processed_at || raw.crawledAt || null,
+    publishTime: raw.postedAt || raw.crawledAt || null,
     source,
     sourceLink: raw.link || '',
     imageUrl: raw.image_link || '',
@@ -898,7 +908,7 @@ app.get('/api/news', async (req, res) => {
     const level2_code = req.query.level2_code;
 
     // 构建查询条件
-    const query = {};
+    const query = buildFreshNewsFilter();
     const andClauses = [];
 
     if (level1_code) {
@@ -1102,8 +1112,9 @@ app.get('/api/tracking/topics', authRequired, async (req, res) => {
 
     const mapped = await Promise.all(
       topics.map(async (topic) => {
-        const query = buildTopicNewsQuery(topic);
-        const newsCount = Object.keys(query).length > 0
+        const topicQuery = buildTopicNewsQuery(topic);
+        const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+        const newsCount = Object.keys(topicQuery).length > 0
           ? await News.countDocuments(query)
           : 0;
         return mapTrackingTopic(topic, newsCount);
@@ -1137,8 +1148,10 @@ app.post('/api/tracking/topics', authRequired, async (req, res) => {
       urls,
     });
 
-    const newsCount = Object.keys(buildTopicNewsQuery(topic)).length > 0
-      ? await News.countDocuments(buildTopicNewsQuery(topic))
+    const topicQuery = buildTopicNewsQuery(topic);
+    const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+    const newsCount = Object.keys(topicQuery).length > 0
+      ? await News.countDocuments(query)
       : 0;
     res.status(201).json(mapTrackingTopic(topic, newsCount));
   } catch (err) {
@@ -1180,8 +1193,9 @@ app.get('/api/tracking/topics/:id/news', authRequired, async (req, res) => {
       return res.status(404).json({ error: '追踪主题不存在' });
     }
 
-    const query = buildTopicNewsQuery(topic);
-    if (Object.keys(query).length === 0) {
+    const topicQuery = buildTopicNewsQuery(topic);
+    const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+    if (Object.keys(topicQuery).length === 0) {
       return res.json({ topic: mapTrackingTopic(topic, 0), items: [], total: 0 });
     }
 
@@ -1240,17 +1254,10 @@ app.get('/api/tracking/analytics', authRequired, async (req, res) => {
       });
     }
 
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - 14);
     const scopedQuery = {
       $and: [
         query,
-        {
-          $or: [
-            { postedAt: { $gte: fromDate } },
-            { crawledAt: { $gte: fromDate } },
-          ],
-        },
+        buildFreshNewsFilter(),
       ],
     };
 
@@ -1335,7 +1342,7 @@ app.get('/api/news/search', async (req, res) => {
     if (limit > 50) limit = 50; // 防止过大
 
     // 3) 基础查询
-    const query = {};
+    const query = buildFreshNewsFilter();
     if (keywords.length) {
       // 使用 OR 匹配标签、标题、摘要（简单 regex）
       const regex = keywords.map((k) => new RegExp(escapeRegex(k), 'i'));

@@ -5,6 +5,7 @@ const News = require('../../../models/News');
 const User = require('../../../models/User');
 const { publish, QUEUE_KEYWORD_SEARCH } = require('../../shared/node/queue');
 const {
+  buildFreshNewsFilter,
   escapeRegex,
   getPreferredLanguage,
   mapNewsDoc,
@@ -40,7 +41,7 @@ function parseTimeRange(timeRange) {
 function buildNewsQuery({ query, filters }) {
   const trimmedQuery = (query || '').toString().trim();
   const keywords = splitKeywords(trimmedQuery);
-  const mongoQuery = {};
+  const mongoQuery = buildFreshNewsFilter();
   const andClauses = [];
 
   if (keywords.length > 0) {

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { authRequired } = require('../../shared/node/auth');
 const { buildNewsIdentity, buildNewsLookupQuery } = require('../../shared/node/news-identity');
 const {
+  buildFreshNewsFilter,
   escapeRegex,
   getPreferredLanguage,
   mapNewsDoc,
@@ -24,7 +25,7 @@ async function listNews(req, res) {
     const level1Code = (req.query.level1_code || '').toString().trim();
     const level2Code = (req.query.level2_code || '').toString().trim();
 
-    const query = {};
+    const query = buildFreshNewsFilter();
     const andClauses = [];
 
     if (level1Code) query.level1_code = level1Code;
@@ -113,7 +114,7 @@ async function searchNews(req, res) {
     if (!Number.isFinite(limit) || limit <= 0) limit = 10;
     if (limit > 50) limit = 50;
 
-    const query = {};
+    const query = buildFreshNewsFilter();
     if (keywords.length > 0) {
       const regexes = keywords.map((item) => new RegExp(escapeRegex(item), 'i'));
       query.$or = [

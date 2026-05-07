@@ -5,6 +5,7 @@ const TrackingTopic = require('../models/TrackingTopic');
 const News = require('../models/News');
 const { authRequired } = require('../../shared/node/auth');
 const {
+  buildFreshNewsFilter,
   buildTopicNewsQuery,
   getPreferredLanguage,
   mapNewsDoc,
@@ -20,8 +21,9 @@ async function listTopics(req, res) {
     const topics = await TrackingTopic.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
     const mapped = await Promise.all(
       topics.map(async (topic) => {
-        const query = buildTopicNewsQuery(topic);
-        const newsCount = Object.keys(query).length > 0 ? await News.countDocuments(query) : 0;
+        const topicQuery = buildTopicNewsQuery(topic);
+        const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+        const newsCount = Object.keys(topicQuery).length > 0 ? await News.countDocuments(query) : 0;
         return mapTrackingTopic(topic, newsCount);
       })
     );
@@ -51,8 +53,9 @@ async function createTopic(req, res) {
       urls,
     });
 
-    const query = buildTopicNewsQuery(topic);
-    const newsCount = Object.keys(query).length > 0 ? await News.countDocuments(query) : 0;
+    const topicQuery = buildTopicNewsQuery(topic);
+    const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+    const newsCount = Object.keys(topicQuery).length > 0 ? await News.countDocuments(query) : 0;
     return res.status(201).json(mapTrackingTopic(topic, newsCount));
   } catch (error) {
     console.error('❌ 新增追踪主题失败:', error);
@@ -91,8 +94,9 @@ async function getTopicNews(req, res) {
       return res.status(404).json({ error: '追踪主题不存在' });
     }
 
-    const query = buildTopicNewsQuery(topic);
-    if (Object.keys(query).length === 0) {
+    const topicQuery = buildTopicNewsQuery(topic);
+    const query = { $and: [buildFreshNewsFilter(), topicQuery] };
+    if (Object.keys(topicQuery).length === 0) {
       return res.json({ topic: mapTrackingTopic(topic, 0), items: [], total: 0 });
     }
 
@@ -140,17 +144,10 @@ async function getAnalytics(req, res) {
       return res.json(buildEmptyTrackingAnalytics());
     }
 
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - 14);
     const docs = await News.find({
       $and: [
         query,
-        {
-          $or: [
-            { postedAt: { $gte: fromDate } },
-            { crawledAt: { $gte: fromDate } },
-          ],
-        },
+        buildFreshNewsFilter(),
       ],
     }).select('title_zh title_en summary_zh summary_en source_zh source_en postedAt crawledAt').lean();
 
