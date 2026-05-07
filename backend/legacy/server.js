@@ -85,13 +85,12 @@ function getPreferredLanguage(req, userLanguage = '') {
   return acceptLanguage.includes('zh') ? 'zh-CN' : 'en';
 }
 
-const FRESH_NEWS_WINDOW_MS = 72 * 60 * 60 * 1000;
 const RECENT_NEWS_SORT = { postedAt: -1, crawledAt: -1, processed_at: -1, _id: -1 };
 
-function buildFreshNewsFilter(now = new Date()) {
+function buildFreshNewsFilter(now = new Date(), windowHours = 72) {
   return {
     postedAt: {
-      $gte: new Date(now.getTime() - FRESH_NEWS_WINDOW_MS),
+      $gte: new Date(now.getTime() - windowHours * 60 * 60 * 1000),
       $lte: now,
     },
   };
@@ -1342,7 +1341,7 @@ app.get('/api/news/search', async (req, res) => {
     if (limit > 50) limit = 50; // 防止过大
 
     // 3) 基础查询
-    const query = buildFreshNewsFilter();
+    const query = keywords.length ? {} : buildFreshNewsFilter();
     if (keywords.length) {
       // 使用 OR 匹配标签、标题、摘要（简单 regex）
       const regex = keywords.map((k) => new RegExp(escapeRegex(k), 'i'));

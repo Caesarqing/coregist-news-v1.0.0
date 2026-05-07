@@ -47,7 +47,7 @@ SUMMARY_NOISE_PATTERNS = (
     r"(?:图|图片|照片|视频|资料图)[:：]",
 )
 
-FRESH_NEWS_WINDOW_HOURS = 72
+MAX_INGEST_AGE_DAYS = 7
 
 
 class AIAnalysisService:
@@ -585,15 +585,15 @@ class AIAnalysisService:
         return datetime.now(timezone.utc).replace(tzinfo=None)
 
     @staticmethod
-    def _is_recent_posted_at(posted_at: datetime | None, *, now: datetime | None = None) -> bool:
+    def _is_ingestable_posted_at(posted_at: datetime | None, *, now: datetime | None = None) -> bool:
         if posted_at is None:
             return False
         current = now or AIAnalysisService._utc_now()
-        return current - timedelta(hours=FRESH_NEWS_WINDOW_HOURS) <= posted_at <= current + timedelta(minutes=5)
+        return current - timedelta(days=MAX_INGEST_AGE_DAYS) <= posted_at <= current + timedelta(minutes=5)
 
     @classmethod
     def _validate_news_document_for_publish(cls, document: dict) -> None:
-        if not cls._is_recent_posted_at(document.get("postedAt")):
+        if not cls._is_ingestable_posted_at(document.get("postedAt")):
             raise ValueError("quality:stale_or_missing_publish_time")
         if not cls._has_valid_chinese_fields(document):
             raise ValueError("Refusing to publish news with non-Chinese title_zh/summary_zh")

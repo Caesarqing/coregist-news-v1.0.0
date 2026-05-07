@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from services.ai_analysis.service import AIAnalysisService
+from services.news_scraper.service import NewsScraperService
 from services.shared.python.llm import LLMProvider
 
 
@@ -97,27 +98,43 @@ class SummaryQualityTest(unittest.TestCase):
         self.assertIsInstance(document["postedAt"], datetime)
         self.assertIsInstance(document["crawledAt"], datetime)
 
-    def test_publish_window_requires_recent_posted_at(self):
+    def test_ingest_window_accepts_recent_posted_at(self):
         now = datetime(2026, 5, 7, 12, 0, 0)
         self.assertTrue(
-            AIAnalysisService._is_recent_posted_at(
+            AIAnalysisService._is_ingestable_posted_at(
                 now - timedelta(hours=24),
                 now=now,
             )
         )
         self.assertTrue(
-            AIAnalysisService._is_recent_posted_at(
-                now - timedelta(hours=72),
+            AIAnalysisService._is_ingestable_posted_at(
+                now - timedelta(days=7),
                 now=now,
             )
         )
         self.assertFalse(
-            AIAnalysisService._is_recent_posted_at(
-                now - timedelta(hours=72, seconds=1),
+            AIAnalysisService._is_ingestable_posted_at(
+                now - timedelta(days=7, seconds=1),
                 now=now,
             )
         )
-        self.assertFalse(AIAnalysisService._is_recent_posted_at(None, now=now))
+        self.assertFalse(AIAnalysisService._is_ingestable_posted_at(None, now=now))
+
+    def test_scraper_rejects_stale_or_missing_posted_at(self):
+        now = datetime(2026, 5, 7, 12, 0, 0)
+        self.assertTrue(
+            NewsScraperService._is_ingestable_posted_at(
+                "2026-05-01T12:00:00Z",
+                now=now,
+            )
+        )
+        self.assertFalse(
+            NewsScraperService._is_ingestable_posted_at(
+                "2026-04-29T11:59:59Z",
+                now=now,
+            )
+        )
+        self.assertFalse(NewsScraperService._is_ingestable_posted_at("", now=now))
 
 
 if __name__ == "__main__":

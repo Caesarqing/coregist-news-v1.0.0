@@ -73,6 +73,11 @@ async function querySearch(req, res) {
     if (mode === 'ai') {
       query = await resolveAiQuery(req.userId, query);
     }
+    const hasActiveFilters = Boolean(
+      filters.time_range
+        || filters.category.length > 0
+        || filters.source.length > 0,
+    );
 
     const result = await searchCompletedNews({
       userId: req.userId,
@@ -82,6 +87,7 @@ async function querySearch(req, res) {
       page,
       limit,
       preferredLanguage,
+      requireFresh: mode === 'news' && !query && !hasActiveFilters,
     });
 
     let searchJob = { triggered: false };

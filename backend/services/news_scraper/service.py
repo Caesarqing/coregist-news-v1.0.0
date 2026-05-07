@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import logging
 from uuid import uuid4
 
@@ -18,6 +18,7 @@ from services.shared.python.settings import settings
 
 logger = logging.getLogger(__name__)
 MAX_ENRICHMENT_PER_SEARCH_JOB = 3
+MAX_INGEST_AGE_DAYS = 7
 
 
 class NewsScraperService:
@@ -26,6 +27,38 @@ class NewsScraperService:
         self.skillset = build_default_skillset()
         self.queue = QueueClient()
         self.search_agent = self.registry.get_agent("search_agent")
+
+    @staticmethod
+    def _coerce_datetime(value) -> datetime | None:
+        if isinstance(value, datetime):
+            parsed = value
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    @classmethod
+    def _is_ingestable_posted_at(cls, posted_at, *, now: datetime | None = None) -> bool:
+        parsed = cls._coerce_datetime(posted_at)
+        if parsed is None:
+            return False
+        current = now or cls._utc_now()
+        return current - timedelta(days=MAX_INGEST_AGE_DAYS) <= parsed <= current + timedelta(minutes=5)
 
     def _upsert_search_job(self, job_id: str, updates: dict) -> None:
         if not job_id:
@@ -173,6 +206,15 @@ class NewsScraperService:
 
             for result in search_results:
                 if not result.get("url"):
+                    continue
+                if not self._is_ingestable_posted_at(result.get("published_at")):
+                    logger.info(
+                        "keyword search skipped stale result job=%s query=%s url=%s published_at=%s",
+                        job_id,
+                        query,
+                        result.get("url"),
+                        result.get("published_at"),
+                    )
                     continue
                 discovered_count += 1
                 try:
@@ -381,6 +423,14 @@ class NewsScraperService:
                         continue
                     seen_urls.add(url)
                     article = extract_article(source, entry)
+                    if not self._is_ingestable_posted_at(article.get("published_at")):
+                        logger.info(
+                            "rss skipped stale article source=%s title=%s published_at=%s",
+                            article.get("source_id") or article.get("publisher_id") or source.publisher_id,
+                            article.get("title") or source.feed_name,
+                            article.get("published_at"),
+                        )
+                        continue
                     identity = build_news_identity(
                         url=article.get("url") or url,
                         title=article.get("title") or source.feed_name,

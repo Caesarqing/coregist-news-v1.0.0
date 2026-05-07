@@ -30,13 +30,12 @@ function getPreferredLanguage(req, userLanguage = '') {
 }
 
 const FRESH_NEWS_WINDOW_HOURS = 72;
-const FRESH_NEWS_WINDOW_MS = FRESH_NEWS_WINDOW_HOURS * 60 * 60 * 1000;
 const RECENT_NEWS_SORT = { postedAt: -1, crawledAt: -1, processed_at: -1, _id: -1 };
 
-function buildFreshNewsFilter(now = new Date()) {
+function buildFreshNewsFilter(now = new Date(), windowHours = FRESH_NEWS_WINDOW_HOURS) {
   return {
     postedAt: {
-      $gte: new Date(now.getTime() - FRESH_NEWS_WINDOW_MS),
+      $gte: new Date(now.getTime() - windowHours * 60 * 60 * 1000),
       $lte: now,
     },
   };

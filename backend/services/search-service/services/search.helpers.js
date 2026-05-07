@@ -38,10 +38,10 @@ function parseTimeRange(timeRange) {
   return null;
 }
 
-function buildNewsQuery({ query, filters }) {
+function buildNewsQuery({ query, filters, requireFresh = false }) {
   const trimmedQuery = (query || '').toString().trim();
   const keywords = splitKeywords(trimmedQuery);
-  const mongoQuery = buildFreshNewsFilter();
+  const mongoQuery = requireFresh ? buildFreshNewsFilter() : {};
   const andClauses = [];
 
   if (keywords.length > 0) {
@@ -120,9 +120,18 @@ async function resolveAiQuery(userId, query) {
   return listKeywords.join(' ');
 }
 
-async function searchCompletedNews({ userId, mode, query, filters, page = 1, limit = 20, preferredLanguage = 'zh-CN' }) {
+async function searchCompletedNews({
+  userId,
+  mode,
+  query,
+  filters,
+  page = 1,
+  limit = 20,
+  preferredLanguage = 'zh-CN',
+  requireFresh = false,
+}) {
   const normalizedFilters = normalizeFilters(filters);
-  const mongoQuery = buildNewsQuery({ query, filters: normalizedFilters });
+  const mongoQuery = buildNewsQuery({ query, filters: normalizedFilters, requireFresh });
   const safePage = Math.max(1, Number(page) || 1);
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
   const skip = (safePage - 1) * safeLimit;

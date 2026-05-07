@@ -114,7 +114,7 @@ async function searchNews(req, res) {
     if (!Number.isFinite(limit) || limit <= 0) limit = 10;
     if (limit > 50) limit = 50;
 
-    const query = buildFreshNewsFilter();
+    const query = rawKeywords.length > 0 ? {} : buildFreshNewsFilter();
     if (keywords.length > 0) {
       const regexes = keywords.map((item) => new RegExp(escapeRegex(item), 'i'));
       query.$or = [
