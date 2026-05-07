@@ -120,6 +120,7 @@ app.use('/api/auth', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}
 app.use('/api/user', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/user'));
 app.use('/api/users', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/users'));
 app.use('/api/tracking', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/tracking`, '/api/tracking'));
+app.get('/api/news', (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
 app.use('/api/news/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/news/search`, '/api/news/search'));
 app.use('/api/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/search`, '/api/search'));
 app.use('/api/news', authenticateToken, (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
