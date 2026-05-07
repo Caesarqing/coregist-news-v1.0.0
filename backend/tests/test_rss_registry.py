@@ -29,6 +29,36 @@ class RssRegistryTest(unittest.TestCase):
         ]:
             self.assertIn(source_id, ids)
 
+    def test_adds_checked_ai_and_technology_sources(self):
+        ids = {source.id for source in list_rss_sources()}
+        for source_id in [
+            "openai:news",
+            "google_ai:main",
+            "arxiv:cs_ai",
+            "hackernews:ai",
+            "theverge:main",
+            "wired:main",
+            "ithome:main",
+            "cisa:news",
+            "cloudflare:blog",
+            "github:blog",
+            "producthunt:main",
+        ]:
+            self.assertIn(source_id, ids)
+
+    def test_skips_unhealthy_sources_from_technology_opml(self):
+        ids = {source.id for source in list_rss_sources()}
+        for source_id in [
+            "stability_ai:main",
+            "bytebytego:main",
+            "supabase:blog",
+            "deno:blog",
+            "freebuf:main",
+            "dribbble:popular",
+            "vercel:blog",
+        ]:
+            self.assertNotIn(source_id, ids)
+
 
 if __name__ == "__main__":
     unittest.main()

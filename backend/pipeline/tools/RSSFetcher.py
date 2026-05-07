@@ -132,7 +132,7 @@ def extract_media(entry) -> list:
     media = []
     # 处理enclosure标签
     for enc in entry.get("enclosures", []):
-        if enc.get("type", "").startswith(("image/", "video/", "audio/")):
+        if enc.get("href") and enc.get("type", "").startswith(("image/", "video/", "audio/")):
             media.append({
                 "url": enc["href"],
                 "type": enc["type"],
@@ -140,6 +140,8 @@ def extract_media(entry) -> list:
             })
     # 处理media_content扩展
     for mc in entry.get("media_content", []):
+        if not mc.get("url"):
+            continue
         media.append({
             "url": mc["url"],
             "type": mc.get("type", "unknown"),
