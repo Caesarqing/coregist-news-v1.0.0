@@ -119,6 +119,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/auth', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/auth`, '/api/auth'));
 app.use('/api/user', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/user'));
 app.use('/api/users', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/user`, '/api/users'));
+app.use('/api/notifications', authenticateToken, (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/notifications`, '/api/notifications'));
 app.use('/api/tracking', (req, res) => forwardRequest(req, res, `${USER_SERVICE_URL}/tracking`, '/api/tracking'));
 app.get('/api/news', (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
 app.use('/api/news/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/news/search`, '/api/news/search'));

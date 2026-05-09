@@ -12,6 +12,7 @@ import { HomePage as Home } from '~/pages/home/Home';
 import { LandingPage as Landing } from '~/pages/landing/Landing';
 import { NewsDetailPage as NewsDetail } from '~/pages/news/Detail';
 import { NewsPageSimplified as NewsList } from '~/pages/news/ListSimplified';
+import { NotificationsPage } from '~/pages/notifications/Notifications';
 import { ProfilePage as Profile } from '~/pages/profile/Profile';
 import { NewsDataDetailPage as NewsDataDetail } from '~/pages/products/NewsDataDetail';
 import { NewsDataMySpacePage as NewsDataMySpace } from '~/pages/products/NewsDataMySpace';
@@ -100,6 +101,13 @@ export function AppRouter() {
           >
             <Route index element={<NewsList />} />
             <Route path=":id" element={<NewsDetail />} />
+          </Route>
+
+          <Route
+            path="/notifications"
+            element={<ProtectedRoute><MainLayout /></ProtectedRoute>}
+          >
+            <Route index element={<NotificationsPage />} />
           </Route>
 
           <Route

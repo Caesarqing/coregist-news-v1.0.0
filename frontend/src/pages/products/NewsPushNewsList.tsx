@@ -4,7 +4,7 @@ import { Card, CardContent } from '~/shared/ui/card';
 import { Button } from '~/shared/ui/button';
 import { ImageWithFallback } from '~/shared/components/ImageWithFallback';
 import { Newspaper, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
-import { searchApi, type NewsItem, type SearchJobSnapshot } from '~/api/apiClient';
+import { newsApi, searchApi, type NewsItem, type SearchJobSnapshot } from '~/api/apiClient';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { PageHero } from '~/shared/components/PageHero';
 import { Badge } from '~/shared/ui/badge';
@@ -21,7 +21,10 @@ export function NewsPushNewsListPage() {
   const [searchParams] = useSearchParams();
   const { language, t } = useLanguage();
   
-  const keywords = searchParams.get('keywords')?.split(',') || [];
+  const keywordsParam = searchParams.get('keywords') || '';
+  const keywords = keywordsParam ? keywordsParam.split(',') : [];
+  const notificationNewsIdsParam = searchParams.get('newsIds') || '';
+  const notificationNewsIds = notificationNewsIdsParam.split(',').map((item) => item.trim()).filter(Boolean);
   const heroTitle = language === 'zh-CN' ? '我的新闻' : 'My News';
   const heroDescription = keywords.length > 0
     ? (language === 'zh-CN' 
@@ -52,6 +55,14 @@ export function NewsPushNewsListPage() {
   const fetchNewsData = useCallback(async () => {
     setIsLoading(true);
     try {
+      if (notificationNewsIds.length > 0) {
+        const detailItems = await Promise.all(
+          notificationNewsIds.map((newsId) => newsApi.getNewsDetail(newsId, language).catch(() => null))
+        );
+        setNewsData(detailItems.filter(Boolean).map(transformNewsItem) as NewsItem[]);
+        setJobId('');
+        return;
+      }
       const result = await searchApi.query({
         query: keywords.join(' '),
         mode: 'news',
@@ -70,7 +81,7 @@ export function NewsPushNewsListPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [keywords, transformNewsItem]);
+  }, [keywordsParam, language, notificationNewsIdsParam, transformNewsItem]);
 
   // 初始加载
   useEffect(() => {

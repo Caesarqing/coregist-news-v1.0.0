@@ -63,6 +63,10 @@ class ServiceSettings:
     ai_review_temperature: float = float(os.getenv("AI_REVIEW_TEMPERATURE", "0.1"))
     ai_review_json_mode: bool = bool_from_env("AI_REVIEW_JSON_MODE", llm_json_mode)
     notification_email: str = os.getenv("NOTIFICATION_EMAIL", "user@example.com")
+    push_due_window_minutes: int = int(os.getenv("PUSH_DUE_WINDOW_MINUTES", "5"))
+    push_existing_news_lookback_hours: int = int(os.getenv("PUSH_EXISTING_NEWS_LOOKBACK_HOURS", "72"))
+    push_batch_completion_timeout_minutes: int = int(os.getenv("PUSH_BATCH_COMPLETION_TIMEOUT_MINUTES", "30"))
+    fcm_server_key: str = os.getenv("FCM_SERVER_KEY", "")
     agent_config_port: int = int(os.getenv("AGENT_CONFIG_PORT", "3003"))
     skill_config_port: int = int(os.getenv("SKILL_CONFIG_PORT", "3004"))
     

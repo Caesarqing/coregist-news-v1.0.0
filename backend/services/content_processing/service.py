@@ -653,6 +653,8 @@ class ContentProcessingService:
             "discovery_id": payload.get("discovery_id", ""),
             "user_id": payload.get("user_id", ""),
             "keywords": payload.get("keywords", []),
+            "push_batch_id": payload.get("push_batch_id", ""),
+            "push_count": payload.get("push_count"),
         }
         
         # Persist to raw_news collection
@@ -717,6 +719,8 @@ class ContentProcessingService:
                 "discovery_id": payload.get("discovery_id", ""),
                 "user_id": payload.get("user_id", ""),
                 "keywords": payload.get("keywords", []),
+                "push_batch_id": payload.get("push_batch_id", ""),
+                "push_count": payload.get("push_count"),
             }
             self.queue.publish(QUEUE_NEWS_READY, processed_payload)
         

@@ -10,6 +10,7 @@ export function MainLayout() {
     const path = location.pathname;
     if (path.startsWith('/home')) return 'home';
     if (path.startsWith('/news')) return 'news';
+    if (path.startsWith('/notifications')) return 'profile';
     if (path.startsWith('/profile')) return 'profile';
     return 'home';
   };

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Newspaper, User } from 'lucide-react';
+import { Bell, Home, Newspaper, User } from 'lucide-react';
+import { notificationApi } from '~/api/apiClient';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { Logo } from '~/shared/components/Logo';
 import { BrandName } from '~/shared/components/BrandName';
@@ -13,6 +15,7 @@ interface TopNavigationProps {
 export function TopNavigation({ activeTab }: TopNavigationProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const tabs = [
     { id: 'home', label: t('aiProductCenter'), icon: Home, path: '/home' },
@@ -23,6 +26,24 @@ export function TopNavigation({ activeTab }: TopNavigationProps) {
   const handleTabChange = (path: string) => {
     navigate(path);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const result = await notificationApi.unreadCount();
+        if (!cancelled) setUnreadCount(result.count || 0);
+      } catch {
+        if (!cancelled) setUnreadCount(0);
+      }
+    };
+    loadUnread();
+    const timer = window.setInterval(loadUnread, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   return (
     <div className="sticky top-0 z-40 bg-gradient-to-b from-background/95 via-background/85 to-background/40 backdrop-blur-xl">
@@ -73,6 +94,19 @@ export function TopNavigation({ activeTab }: TopNavigationProps) {
 
           {/* 右侧语言切换器 */}
           <div className="flex items-center gap-1.5 sm:gap-2 justify-self-end">
+            <button
+              type="button"
+              onClick={() => navigate('/notifications')}
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              aria-label="Notifications"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
             <ThemeToggle />
             <LanguageSwitcher showLabel={false} />
           </div>

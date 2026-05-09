@@ -11,7 +11,7 @@
     "start:search-service": "node services/search-service/app.js",
     "start:user-service": "node services/user-service/app.js",
     "start:news-service": "node services/news-service/app.js",
-    "check": "node --check legacy/server.js && node --check gateway/app.js && node --check services/shared/node/auth.js && node --check services/shared/node/queue.js && node --check services/user-service/app.js && node --check services/user-service/routes/auth.routes.js && node --check services/user-service/controllers/auth.controller.js && node --check services/news-service/app.js && node --check services/search-service/app.js && node --check services/search-service/controllers/search.controller.js && node --check services/search-service/services/search.helpers.js"
+    "check": "node --check legacy/server.js && node --check gateway/app.js && node --check services/shared/node/auth.js && node --check services/shared/node/queue.js && node --check services/user-service/app.js && node --check services/user-service/routes/auth.routes.js && node --check services/user-service/routes/notification.routes.js && node --check services/user-service/controllers/auth.controller.js && node --check services/user-service/controllers/notification.controller.js && node --check services/user-service/models/Notification.js && node --check services/user-service/models/UserPushToken.js && node --check services/news-service/app.js && node --check services/search-service/app.js && node --check services/search-service/controllers/search.controller.js && node --check services/search-service/services/search.helpers.js"
   },
   "keywords": [],
   "author": "",

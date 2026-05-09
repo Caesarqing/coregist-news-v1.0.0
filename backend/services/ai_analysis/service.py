@@ -632,6 +632,50 @@ class AIAnalysisService:
                 },
             )
 
+    @staticmethod
+    def _normalize_push_count(value: Any) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = 5
+        return max(1, min(parsed, 20))
+
+    def _sync_push_batch(self, payload: dict, stored_news: dict | None) -> None:
+        batch_id = payload.get("push_batch_id") or ""
+        if not batch_id or not stored_news:
+            return
+        news_object_id = stored_news.get("_id")
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$addToSet": {"matchedNewsIds": news_object_id},
+                    "$set": {"status": "processing", "updatedAt": datetime.utcnow()},
+                },
+            )
+            batch = collection.find_one({"batchId": batch_id}) or {}
+        news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
+        push_count = self._normalize_push_count(batch.get("pushCount") or payload.get("push_count"))
+        if len(news_ids) < push_count or batch.get("notificationId"):
+            return
+        selected_ids = news_ids[:push_count]
+        title = "新闻推送已更新"
+        summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 为你找到 {len(selected_ids)} 条相关新闻。"
+        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+            "type": "news_push",
+            "user_id": batch.get("userId") or payload.get("user_id", ""),
+            "title": title,
+            "summary": summary,
+            "content": summary,
+            "news_ids": [str(item) for item in selected_ids],
+            "push_batch_id": batch_id,
+        })
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {"$set": {"status": "ready", "updatedAt": datetime.utcnow()}},
+            )
+
     def process(self, task: dict, *, publish: bool = True) -> dict:
         payload = None
         if isinstance(task, dict) and isinstance(task.get("payload"), dict):
@@ -780,14 +824,16 @@ class AIAnalysisService:
                         },
                     )
             self._sync_user_search_job(payload.get("search_job_id", ""))
+            self._sync_push_batch(payload, stored_news)
 
             if publish:
                 self.queue.publish(QUEUE_NEWS_FINAL, final_payload)
-                self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
-                    "user_id": payload.get("user_id", "system"),
-                    "content": f"新闻 {payload.get('title', news_id)} 已完成 AI 分析。",
-                    "news_id": news_id,
-                })
+                if not payload.get("push_batch_id"):
+                    self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+                        "user_id": payload.get("user_id", "system"),
+                        "content": f"新闻 {payload.get('title', news_id)} 已完成 AI 分析。",
+                        "news_id": news_id,
+                    })
             return final_payload
         except Exception as error:
             self.raw_news_repo.update_status(news_id, {"processing_status": "failed", "last_error": str(error)})

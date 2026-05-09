@@ -303,15 +303,11 @@ export function NewsPushPage() {
         return;
       }
 
-      // 非鉴权错误时，允许本地保存，保证“我的新闻”可用
-      const localEntry = buildEntryFromSettings(completeSettings, keywordStrings);
-      const nextEntries = localEntry ? [...pushEntries, localEntry] : pushEntries;
-      saveLocalCachedEntries(nextEntries.map(serializePushEntry));
-      setPushEntries(nextEntries);
-      resetSettingsForm();
-      setActiveSection('my-news');
-      navigate('/home/news-push?tab=my-news');
-      alert(language === 'zh-CN' ? '网络异常，已暂存到本地。' : 'Network issue, saved locally for now.');
+      alert(
+        language === 'zh-CN'
+          ? '保存失败：设置未同步到服务器，无法定时推送。请检查网络后重试。'
+          : 'Save failed: settings were not synced to the server, so scheduled pushes will not run. Please check your connection and retry.'
+      );
     } finally {
       setIsSaving(false);
     }

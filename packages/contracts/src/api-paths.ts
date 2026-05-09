@@ -14,6 +14,13 @@ export const API_PATHS = {
     profile: '/user/profile',
     settings: '/user/settings',
   },
+  notifications: {
+    list: '/notifications',
+    unreadCount: '/notifications/unread-count',
+    pushToken: '/notifications/push-token',
+    read: (id: string) => `/notifications/${id}/read`,
+    readAll: '/notifications/read-all',
+  },
   news: {
     list: '/news',
     detail: (id: string) => `/news/${id}`,

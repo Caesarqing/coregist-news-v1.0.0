@@ -349,6 +349,8 @@ class NewsScraperService:
                         "keywords": keyword_payload.get("keywords", []),
                         "source_type": keyword_payload.get("source_type", "search_query"),
                         "topic_name": keyword_payload.get("topic_name", ""),
+                        "push_batch_id": keyword_payload.get("push_batch_id", ""),
+                        "push_count": keyword_payload.get("push_count"),
                         "scrape_backend": scraped.get("backend", ""),
                     })
                 except Exception as exc:

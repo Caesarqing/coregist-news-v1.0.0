@@ -16,6 +16,7 @@ import {
   onAuthStateChanged,
   User
 } from "firebase/auth";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -32,6 +33,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 const auth = getAuth(app);
+const messagingPromise = typeof window !== 'undefined'
+  ? isSupported().then((supported) => (supported ? getMessaging(app) : null)).catch(() => null)
+  : Promise.resolve(null);
 
 // 配置 Google 登录
 const googleProvider = new GoogleAuthProvider();
@@ -180,6 +184,22 @@ export const firebaseAuth = {
     }
     return null;
   }
+};
+
+export const firebaseMessaging = {
+  async requestWebPushToken(): Promise<string | null> {
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+      return null;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return null;
+    const messaging = await messagingPromise;
+    if (!messaging) return null;
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const vapidKey = (import.meta as any).env?.VITE_FIREBASE_VAPID_KEY || '';
+    if (!vapidKey) return null;
+    return getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
+  },
 };
 
 // 错误消息映射

@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { ArrowLeft, Bell, Smartphone, Volume2, Vibrate } from 'lucide-react';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { PageHero } from '~/shared/components/PageHero';
+import { notificationApi } from '~/api/apiClient';
+import { firebaseMessaging } from '~/config/firebase';
 
 export function NotificationSettingsPage() {
   const navigate = useNavigate();
@@ -20,11 +22,27 @@ export function NotificationSettingsPage() {
   const [quietHours, setQuietHours] = useState(true);
   const [quietStart, setQuietStart] = useState('22:00');
   const [quietEnd, setQuietEnd] = useState('08:00');
+  const [browserPushStatus, setBrowserPushStatus] = useState('');
 
   const heroDescription =
     language === 'zh-CN'
       ? '管理消息提醒、声音震动和免打扰时间'
        : 'Manage alerts, sound, vibration and quiet hours';
+
+  const enableBrowserPush = async () => {
+    try {
+      setBrowserPushStatus(language === 'zh-CN' ? '正在请求浏览器授权...' : 'Requesting browser permission...');
+      const token = await firebaseMessaging.requestWebPushToken();
+      if (!token) {
+        setBrowserPushStatus(language === 'zh-CN' ? '未获得浏览器推送授权或未配置 VAPID Key。站内消息仍可正常使用。' : 'Browser push was not enabled or VAPID key is missing. In-app messages still work.');
+        return;
+      }
+      await notificationApi.registerPushToken(token);
+      setBrowserPushStatus(language === 'zh-CN' ? '浏览器推送已启用。' : 'Browser push is enabled.');
+    } catch (error: any) {
+      setBrowserPushStatus(error?.message || (language === 'zh-CN' ? '启用失败，站内消息仍可正常使用。' : 'Failed to enable. In-app messages still work.'));
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto bg-background">
@@ -62,6 +80,14 @@ export function NotificationSettingsPage() {
                 <p className="text-muted-foreground text-sm mt-1">{t('receiveAppNotifications')}</p>
               </div>
               <Switch checked={pushEnabled} onCheckedChange={setPushEnabled} />
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <Button type="button" variant="outline" onClick={enableBrowserPush} disabled={!pushEnabled}>
+                {language === 'zh-CN' ? '启用浏览器提醒' : 'Enable browser alerts'}
+              </Button>
+              {browserPushStatus && (
+                <p className="mt-2 text-sm text-muted-foreground">{browserPushStatus}</p>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -2,6 +2,7 @@ const express = require('express');
 
 const { connectToMongo } = require('../shared/node/db');
 const authRouter = require('./routes/auth.routes');
+const notificationRouter = require('./routes/notification.routes');
 const userRouter = require('./routes/user.routes');
 const trackingRouter = require('./routes/tracking.routes');
 const { healthCheck } = require('./controllers/health.controller');
@@ -12,6 +13,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', healthCheck);
 app.use('/auth', authRouter);
+app.use('/notifications', notificationRouter);
 app.use('/user', userRouter);
 app.use('/tracking', trackingRouter);
 

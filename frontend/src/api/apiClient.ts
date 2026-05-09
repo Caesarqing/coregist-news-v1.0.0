@@ -198,6 +198,13 @@ class ApiClient {
     });
   }
 
+  async patch<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
@@ -285,6 +292,27 @@ export type {
   TrackingTopic,
   UnifiedSearchResponse,
 };
+
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  summary: string;
+  content: string;
+  newsIds: string[];
+  pushBatchId: string;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationListResponse {
+  items: AppNotification[];
+  total: number;
+  unreadCount: number;
+  page: number;
+  limit: number;
+}
 
 // 用户认证API
 function persistAuthTokens(tokenData: Partial<AuthResult>) {
@@ -441,6 +469,33 @@ export const userSettingsApi = {
   // 更新用户语言设置
   async updateLanguage(language: 'zh-CN' | 'en'): Promise<UpdateUserSettingsResponse> {
     return apiClient.put<UpdateUserSettingsResponse>(API_PATHS.user.settings, { language });
+  },
+};
+
+export const notificationApi = {
+  async list(params?: { unreadOnly?: boolean; page?: number; limit?: number }): Promise<NotificationListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.unreadOnly) searchParams.set('unreadOnly', 'true');
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    return apiClient.get<NotificationListResponse>(`${API_PATHS.notifications.list}${qs ? `?${qs}` : ''}`);
+  },
+
+  async unreadCount(): Promise<{ count: number }> {
+    return apiClient.get<{ count: number }>(API_PATHS.notifications.unreadCount);
+  },
+
+  async markRead(id: string): Promise<{ ok: boolean; item: AppNotification }> {
+    return apiClient.patch<{ ok: boolean; item: AppNotification }>(API_PATHS.notifications.read(id));
+  },
+
+  async markAllRead(): Promise<{ ok: boolean; modifiedCount: number }> {
+    return apiClient.patch<{ ok: boolean; modifiedCount: number }>(API_PATHS.notifications.readAll);
+  },
+
+  async registerPushToken(token: string, platform = 'web'): Promise<{ ok: boolean }> {
+    return apiClient.post<{ ok: boolean }>(API_PATHS.notifications.pushToken, { token, platform });
   },
 };
 
