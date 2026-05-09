@@ -28,10 +28,26 @@ QueueClient().publish(QUEUE_NEWS_CRAWL_TRIGGER, {
     "mode": "rss",
     "publish_raw": True,
     "limit_per_feed": min(settings.rss_max_items_per_feed, 2),
-    "source_limit": 8,
+    "source_limit": settings.rss_source_batch_size,
+    "rotate_sources": True,
 })
 print("published")
 PY
+```
+
+默认调度使用 RSS 分批轮询：每轮只抓 `RSS_SOURCE_BATCH_SIZE` 个可访问来源，并根据
+`RSS_SOURCE_MIN_INTERVAL_SECONDS`、`RSS_DOMAIN_MIN_INTERVAL_SECONDS` 和
+`RSS_SOURCE_ERROR_BACKOFF_SECONDS` 跳过冷却中或退避中的来源。需要临时抓指定来源时，传
+`source_ids` 或 `publisher_ids`；指定来源不会使用默认轮询游标。
+
+推荐生产配置从保守值开始：
+
+```bash
+SCHEDULER_INTERVAL_MINUTES=5
+RSS_SOURCE_BATCH_SIZE=8
+RSS_SOURCE_MIN_INTERVAL_SECONDS=900
+RSS_DOMAIN_MIN_INTERVAL_SECONDS=300
+RSS_SOURCE_ERROR_BACKOFF_SECONDS=1800
 ```
 
 ## 状态检查

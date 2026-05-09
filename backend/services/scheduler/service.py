@@ -24,6 +24,8 @@ class SchedulerService:
             "mode": "rss",
             "publish_raw": True,
             "limit_per_feed": settings.rss_max_items_per_feed,
+            "source_limit": settings.rss_source_batch_size,
+            "rotate_sources": True,
         })
 
     @staticmethod

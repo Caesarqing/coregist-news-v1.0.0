@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from services.shared.python.agent_runtime import build_default_agent_registry, build_default_skillset
@@ -19,6 +20,7 @@ from services.shared.python.settings import settings
 logger = logging.getLogger(__name__)
 MAX_ENRICHMENT_PER_SEARCH_JOB = 3
 MAX_INGEST_AGE_DAYS = 7
+RSS_ROTATION_STATE_ID = "default"
 
 
 class NewsScraperService:
@@ -399,6 +401,206 @@ class NewsScraperService:
         requested = int(limit_per_feed) if limit_per_feed else settings.rss_max_items_per_feed
         return max(1, min(requested, settings.rss_max_items_per_feed_hard_limit))
 
+    @staticmethod
+    def _source_sort_key(source) -> tuple[int, str]:
+        return (getattr(source, "priority", 50), getattr(source, "id", ""))
+
+    @staticmethod
+    def _rss_domain(source) -> str:
+        return (urlparse(getattr(source, "feed_url", "") or "").hostname or "").lower()
+
+    @staticmethod
+    def _state_key(value: str) -> str:
+        return (value or "").replace(".", "__dot__").replace("$", "__dollar__")
+
+    @classmethod
+    def _rotation_state_for_source(cls, state: dict, source_id: str) -> dict:
+        return (state.get("sources") or {}).get(cls._state_key(source_id), {}) or {}
+
+    @classmethod
+    def _rotation_state_for_domain(cls, state: dict, domain: str) -> dict:
+        return (state.get("domains") or {}).get(cls._state_key(domain), {}) or {}
+
+    @classmethod
+    def _is_source_available_for_rotation(
+        cls,
+        *,
+        source,
+        state: dict,
+        now: datetime,
+        source_min_interval_seconds: int | None = None,
+        domain_min_interval_seconds: int | None = None,
+        source_error_backoff_seconds: int | None = None,
+    ) -> bool:
+        source_min_interval_seconds = (
+            settings.rss_source_min_interval_seconds
+            if source_min_interval_seconds is None
+            else source_min_interval_seconds
+        )
+        domain_min_interval_seconds = (
+            settings.rss_domain_min_interval_seconds
+            if domain_min_interval_seconds is None
+            else domain_min_interval_seconds
+        )
+        source_error_backoff_seconds = (
+            settings.rss_source_error_backoff_seconds
+            if source_error_backoff_seconds is None
+            else source_error_backoff_seconds
+        )
+
+        source_state = cls._rotation_state_for_source(state, source.id)
+        last_attempt = cls._coerce_datetime(source_state.get("last_attempt_at"))
+        if last_attempt and now - last_attempt < timedelta(seconds=max(0, source_min_interval_seconds)):
+            return False
+
+        error_count = int(source_state.get("error_count") or 0)
+        last_error = cls._coerce_datetime(source_state.get("last_error_at"))
+        if error_count > 0 and last_error and now - last_error < timedelta(seconds=max(0, source_error_backoff_seconds)):
+            return False
+
+        domain = cls._rss_domain(source)
+        if domain:
+            domain_state = cls._rotation_state_for_domain(state, domain)
+            last_domain_attempt = cls._coerce_datetime(domain_state.get("last_attempt_at"))
+            if last_domain_attempt and now - last_domain_attempt < timedelta(seconds=max(0, domain_min_interval_seconds)):
+                return False
+
+        return True
+
+    @classmethod
+    def select_rotating_sources(
+        cls,
+        sources: list,
+        *,
+        state: dict | None = None,
+        source_limit: int | None = None,
+        now: datetime | None = None,
+        source_min_interval_seconds: int | None = None,
+        domain_min_interval_seconds: int | None = None,
+        source_error_backoff_seconds: int | None = None,
+    ) -> tuple[list, int]:
+        ordered_sources = sorted(sources, key=cls._source_sort_key)
+        if not ordered_sources:
+            return [], 0
+
+        state = state or {}
+        current = now or cls._utc_now()
+        batch_size = max(1, int(source_limit or settings.rss_source_batch_size))
+        start = int(state.get("cursor") or 0) % len(ordered_sources)
+        selected = []
+        batch_domains: set[str] = set()
+
+        for offset in range(len(ordered_sources)):
+            source = ordered_sources[(start + offset) % len(ordered_sources)]
+            domain = cls._rss_domain(source)
+            if domain and domain in batch_domains:
+                continue
+            if not cls._is_source_available_for_rotation(
+                source=source,
+                state=state,
+                now=current,
+                source_min_interval_seconds=source_min_interval_seconds,
+                domain_min_interval_seconds=domain_min_interval_seconds,
+                source_error_backoff_seconds=source_error_backoff_seconds,
+            ):
+                continue
+
+            selected.append(source)
+            if domain:
+                batch_domains.add(domain)
+            if len(selected) >= batch_size:
+                break
+
+        next_cursor = (start + len(ordered_sources)) % len(ordered_sources)
+        if selected:
+            last_index = ordered_sources.index(selected[-1])
+            next_cursor = (last_index + 1) % len(ordered_sources)
+        return selected, next_cursor
+
+    def _load_rss_rotation_state(self) -> dict:
+        with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            return collection.find_one({"_id": RSS_ROTATION_STATE_ID}) or {
+                "_id": RSS_ROTATION_STATE_ID,
+                "cursor": 0,
+                "sources": {},
+                "domains": {},
+            }
+
+    def _save_rss_rotation_cursor(self, cursor: int) -> None:
+        with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            collection.update_one(
+                {"_id": RSS_ROTATION_STATE_ID},
+                {
+                    "$set": {
+                        "cursor": max(0, int(cursor)),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                    "$setOnInsert": {
+                        "sources": {},
+                        "domains": {},
+                        "createdAt": datetime.utcnow(),
+                    },
+                },
+                upsert=True,
+            )
+
+    def _mark_rss_source_attempt(self, source, *, now: datetime | None = None) -> None:
+        current = now or self._utc_now()
+        domain = self._rss_domain(source)
+        set_values = {
+            f"sources.{self._state_key(source.id)}.source_id": source.id,
+            f"sources.{self._state_key(source.id)}.last_attempt_at": current,
+            "updatedAt": datetime.utcnow(),
+        }
+        if domain:
+            set_values[f"domains.{self._state_key(domain)}.hostname"] = domain
+            set_values[f"domains.{self._state_key(domain)}.last_attempt_at"] = current
+        with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            collection.update_one(
+                {"_id": RSS_ROTATION_STATE_ID},
+                {"$set": set_values, "$setOnInsert": {"createdAt": datetime.utcnow()}},
+                upsert=True,
+            )
+
+    def _mark_rss_source_success(self, source, *, now: datetime | None = None) -> None:
+        current = now or self._utc_now()
+        source_key = self._state_key(source.id)
+        with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            collection.update_one(
+                {"_id": RSS_ROTATION_STATE_ID},
+                {
+                    "$set": {
+                        f"sources.{source_key}.source_id": source.id,
+                        f"sources.{source_key}.last_success_at": current,
+                        f"sources.{source_key}.error_count": 0,
+                        "updatedAt": datetime.utcnow(),
+                    },
+                    "$setOnInsert": {"createdAt": datetime.utcnow()},
+                },
+                upsert=True,
+            )
+
+    def _mark_rss_source_error(self, source, error: Exception, *, now: datetime | None = None) -> None:
+        current = now or self._utc_now()
+        source_key = self._state_key(source.id)
+        with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            collection.update_one(
+                {"_id": RSS_ROTATION_STATE_ID},
+                {
+                    "$set": {
+                        f"sources.{source_key}.source_id": source.id,
+                        f"sources.{source_key}.last_error_at": current,
+                        f"sources.{source_key}.last_error": str(error)[:500],
+                        "updatedAt": datetime.utcnow(),
+                    },
+                    "$inc": {
+                        f"sources.{source_key}.error_count": 1,
+                    },
+                    "$setOnInsert": {"createdAt": datetime.utcnow()},
+                },
+                upsert=True,
+            )
+
     def collect_rss_news(
         self,
         *,
@@ -406,76 +608,105 @@ class NewsScraperService:
         publisher_ids: list[str] | None = None,
         limit_per_feed: int | None = None,
         source_limit: int | None = None,
+        rotate_sources: bool = False,
         on_item=None,
     ) -> list[dict]:
         items: list[dict] = []
         seen_urls: set[str] = set()
         max_items = self._resolve_feed_limit(limit_per_feed)
         sources = list_rss_sources(source_ids=source_ids, publisher_ids=publisher_ids)
-        sources = sorted(sources, key=lambda source: getattr(source, "priority", 50))
-        if source_limit:
+        sources = sorted(sources, key=self._source_sort_key)
+        should_rotate = rotate_sources and not source_ids and not publisher_ids
+        if should_rotate:
+            state = self._load_rss_rotation_state()
+            sources, next_cursor = self.select_rotating_sources(
+                sources,
+                state=state,
+                source_limit=source_limit,
+            )
+            self._save_rss_rotation_cursor(next_cursor)
+            logger.info(
+                "rss rotation selected count=%s next_cursor=%s sources=%s",
+                len(sources),
+                next_cursor,
+                [source.id for source in sources],
+            )
+        elif source_limit:
             sources = sources[: max(1, int(source_limit))]
         with mongo_collection("news") as collection:
             for source in sources:
-                for entry in fetch_rss_entries(source, max_items=max_items):
-                    url = (entry.get("url") or "").strip()
-                    if not url or url in seen_urls:
-                        continue
-                    seen_urls.add(url)
-                    article = extract_article(source, entry)
-                    if not self._is_ingestable_posted_at(article.get("published_at")):
-                        logger.info(
-                            "rss skipped stale article source=%s title=%s published_at=%s",
-                            article.get("source_id") or article.get("publisher_id") or source.publisher_id,
-                            article.get("title") or source.feed_name,
-                            article.get("published_at"),
+                if should_rotate:
+                    self._mark_rss_source_attempt(source)
+                source_succeeded = False
+                try:
+                    entries = fetch_rss_entries(source, max_items=max_items)
+                    source_succeeded = True
+                    for entry in entries:
+                        url = (entry.get("url") or "").strip()
+                        if not url or url in seen_urls:
+                            continue
+                        seen_urls.add(url)
+                        article = extract_article(source, entry)
+                        if not self._is_ingestable_posted_at(article.get("published_at")):
+                            logger.info(
+                                "rss skipped stale article source=%s title=%s published_at=%s",
+                                article.get("source_id") or article.get("publisher_id") or source.publisher_id,
+                                article.get("title") or source.feed_name,
+                                article.get("published_at"),
+                            )
+                            continue
+                        identity = build_news_identity(
+                            url=article.get("url") or url,
+                            title=article.get("title") or source.feed_name,
                         )
-                        continue
-                    identity = build_news_identity(
-                        url=article.get("url") or url,
-                        title=article.get("title") or source.feed_name,
-                    )
-                    lookup_query = build_news_lookup_query(
-                        link=article.get("url") or url,
-                        canonical_link=identity["canonical_link"],
-                        title_hash=identity["title_hash"],
-                        source_id=article.get("source_id") or article.get("publisher_id") or "",
-                    )
-                    if lookup_query and collection.find_one(lookup_query, {"_id": 1}):
+                        lookup_query = build_news_lookup_query(
+                            link=article.get("url") or url,
+                            canonical_link=identity["canonical_link"],
+                            title_hash=identity["title_hash"],
+                            source_id=article.get("source_id") or article.get("publisher_id") or "",
+                        )
+                        if lookup_query and collection.find_one(lookup_query, {"_id": 1}):
+                            self._upsert_global_discovery_doc(article=article, identity=identity, pipeline_mode="rss")
+                            continue
                         self._upsert_global_discovery_doc(article=article, identity=identity, pipeline_mode="rss")
-                        continue
-                    self._upsert_global_discovery_doc(article=article, identity=identity, pipeline_mode="rss")
-                    items.append({
-                        "news_id": str(uuid4()),
-                        "title": article.get("title") or source.feed_name,
-                        "url": url,
-                        "canonical_link": identity["canonical_link"],
-                        "title_hash": identity["title_hash"],
-                        "snippet": article.get("snippet", ""),
-                        "raw_content": article.get("raw_content", ""),
-                        "raw_html": article.get("raw_html", ""),
-                        "image_link": article.get("image_link"),
-                        "image_confidence": article.get("image_confidence", "none"),
-                        "image_source_type": article.get("image_source_type", "none"),
-                        "image_fallback_type": article.get("image_fallback_type", ""),
-                        "source_logo_url": article.get("source_logo_url", ""),
-                        "errors": article.get("errors", []),
-                        "crawled_at": datetime.utcnow().isoformat(),
-                        "posted_at": article.get("published_at"),
-                        "feed_name": article.get("feed_name"),
-                        "feed_url": article.get("feed_url"),
-                        "source_id": article.get("source_id"),
-                        "publisher_id": article.get("publisher_id"),
-                        "source_name_en": article.get("source_name_en"),
-                        "source_name_zh": article.get("source_name_zh"),
-                        "categories": article.get("categories", []),
-                        "language": article.get("language", source.language),
-                        "region": article.get("region", source.region),
-                        "adapter_id": article.get("adapter_id", source.adapter_id),
-                        "pipeline_mode": "rss",
-                    })
-                    if callable(on_item):
-                        on_item(items[-1])
+                        items.append({
+                            "news_id": str(uuid4()),
+                            "title": article.get("title") or source.feed_name,
+                            "url": url,
+                            "canonical_link": identity["canonical_link"],
+                            "title_hash": identity["title_hash"],
+                            "snippet": article.get("snippet", ""),
+                            "raw_content": article.get("raw_content", ""),
+                            "raw_html": article.get("raw_html", ""),
+                            "image_link": article.get("image_link"),
+                            "image_confidence": article.get("image_confidence", "none"),
+                            "image_source_type": article.get("image_source_type", "none"),
+                            "image_fallback_type": article.get("image_fallback_type", ""),
+                            "source_logo_url": article.get("source_logo_url", ""),
+                            "errors": article.get("errors", []),
+                            "crawled_at": datetime.utcnow().isoformat(),
+                            "posted_at": article.get("published_at"),
+                            "feed_name": article.get("feed_name"),
+                            "feed_url": article.get("feed_url"),
+                            "source_id": article.get("source_id"),
+                            "publisher_id": article.get("publisher_id"),
+                            "source_name_en": article.get("source_name_en"),
+                            "source_name_zh": article.get("source_name_zh"),
+                            "categories": article.get("categories", []),
+                            "language": article.get("language", source.language),
+                            "region": article.get("region", source.region),
+                            "adapter_id": article.get("adapter_id", source.adapter_id),
+                            "pipeline_mode": "rss",
+                        })
+                        if callable(on_item):
+                            on_item(items[-1])
+                except Exception as exc:
+                    logger.exception("rss source failed source=%s feed_url=%s", source.id, source.feed_url)
+                    if should_rotate:
+                        self._mark_rss_source_error(source, exc)
+                    continue
+                if should_rotate and source_succeeded:
+                    self._mark_rss_source_success(source)
         return items
 
     def crawl_rss_sources(
@@ -485,6 +716,7 @@ class NewsScraperService:
         publisher_ids: list[str] | None = None,
         limit_per_feed: int | None = None,
         source_limit: int | None = None,
+        rotate_sources: bool = False,
         publish: bool = False,
     ) -> list[dict]:
         payloads = self.collect_rss_news(
@@ -492,6 +724,7 @@ class NewsScraperService:
             publisher_ids=publisher_ids,
             limit_per_feed=limit_per_feed,
             source_limit=source_limit,
+            rotate_sources=rotate_sources,
             on_item=(lambda payload: self.queue.publish(QUEUE_NEWS_RAW, payload)) if publish else None,
         )
         return payloads
@@ -507,11 +740,13 @@ class NewsScraperService:
             publisher_ids = [str(item).strip() for item in payload.get("publisher_ids", []) if str(item).strip()]
             limit_per_feed = payload.get("limit_per_feed")
             source_limit = payload.get("source_limit")
+            rotate_sources = bool(payload.get("rotate_sources", False))
             self.crawl_rss_sources(
                 source_ids=source_ids or None,
                 publisher_ids=publisher_ids or None,
                 limit_per_feed=self._resolve_feed_limit(int(limit_per_feed)) if limit_per_feed else None,
                 source_limit=max(1, int(source_limit)) if source_limit else None,
+                rotate_sources=rotate_sources,
                 publish=bool(payload.get("publish_raw", False)),
             )
 
