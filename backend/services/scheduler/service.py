@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import re
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from bson import ObjectId
@@ -133,22 +134,41 @@ class SchedulerService:
         news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
         push_count = self._normalize_push_count(batch.get("pushCount"))
         should_complete = force or len(news_ids) >= push_count
-        if not should_complete or batch.get("notificationId"):
+        if not should_complete or batch.get("notificationId") or batch.get("notificationQueuedAt"):
             return
+        selected_ids = news_ids[:push_count]
         title = "新闻推送已更新"
-        summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 为你找到 {len(news_ids)} 条相关新闻。"
+        if selected_ids:
+            summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 为你找到 {len(selected_ids)} 条相关新闻。"
+        else:
+            summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 暂未找到符合条件的相关新闻。"
+        with mongo_collection("push_batches") as batch_collection:
+            batch_collection.update_one(
+                {"batchId": batch.get("batchId", "")},
+                {
+                    "$set": {
+                        "status": "ready" if len(selected_ids) >= push_count else ("partial" if selected_ids else "failed"),
+                        "notificationQueuedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
         self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
             "type": "news_push",
             "user_id": batch.get("userId", ""),
             "title": title,
             "summary": summary,
             "content": summary,
-            "news_ids": [str(item) for item in news_ids[:push_count]],
+            "news_ids": [str(item) for item in selected_ids],
             "push_batch_id": batch.get("batchId", ""),
         })
 
+    @staticmethod
+    def _push_now() -> datetime:
+        return datetime.now(ZoneInfo(settings.push_timezone)).replace(tzinfo=None)
+
     def trigger_keyword_searches(self) -> None:
-        now = datetime.now()
+        now = self._push_now()
         with mongo_collection("users") as users_collection:
             users = list(users_collection.find(
                 {
@@ -187,11 +207,16 @@ class SchedulerService:
                                 "scheduledFor": scheduled_for,
                                 "status": "queued",
                                 "matchedNewsIds": matched_news_ids,
+                                "matchedCount": len(matched_news_ids),
                                 "notificationId": "",
+                                "notificationQueuedAt": None,
                                 "searchJobId": "",
+                                "lastRunAt": datetime.utcnow(),
+                                "lastError": "",
                                 "createdAt": datetime.utcnow(),
                             },
                             "$set": {
+                                "lastRunAt": datetime.utcnow(),
                                 "updatedAt": datetime.utcnow(),
                             },
                         },
@@ -202,7 +227,7 @@ class SchedulerService:
                 with mongo_collection("push_batches") as batch_collection:
                     batch_collection.update_one(
                         {"batchId": batch_id},
-                        {"$set": {"matchedNewsIds": current_ids, "updatedAt": datetime.utcnow()}},
+                        {"$set": {"matchedNewsIds": current_ids, "matchedCount": len(current_ids), "updatedAt": datetime.utcnow()}},
                     )
                     batch = batch_collection.find_one({"batchId": batch_id}) or {}
 
@@ -228,11 +253,17 @@ class SchedulerService:
                                 "mode": "ai",
                                 "query": " ".join(keywords),
                                 "keywords": keywords,
-                                "filters": {"category": [], "source": [], "time_range": ""},
+                                "filters": {
+                                    "category": [],
+                                    "source": [],
+                                    "time_range": "",
+                                    "remaining_count": max(0, push_count - len(current_ids)),
+                                },
                                 "allow_discovery": True,
                                 "source_type": "push_settings",
                                 "push_batch_id": batch_id,
                                 "push_count": push_count,
+                                "remaining_count": max(0, push_count - len(current_ids)),
                             },
                             "$setOnInsert": {
                                 "job_id": job_id,
@@ -252,11 +283,19 @@ class SchedulerService:
                     "source_type": "push_settings",
                     "push_batch_id": batch_id,
                     "push_count": push_count,
+                    "remaining_count": max(0, push_count - len(current_ids)),
                 })
                 with mongo_collection("push_batches") as batch_collection:
                     batch_collection.update_one(
                         {"batchId": batch_id},
-                        {"$set": {"searchJobId": job_id, "status": "processing", "updatedAt": datetime.utcnow()}},
+                        {
+                            "$set": {
+                                "searchJobId": job_id,
+                                "status": "processing",
+                                "searchExpectedCount": max(0, push_count - len(current_ids)),
+                                "updatedAt": datetime.utcnow(),
+                            },
+                        },
                     )
 
         cutoff = datetime.utcnow() - timedelta(minutes=max(1, settings.push_batch_completion_timeout_minutes))
@@ -267,7 +306,17 @@ class SchedulerService:
                 "notificationId": {"$in": ["", None]},
             }))
             for batch in stale_batches:
-                batch_collection.update_one({"batchId": batch.get("batchId")}, {"$set": {"status": "completed", "updatedAt": datetime.utcnow()}})
+                news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
+                batch_collection.update_one(
+                    {"batchId": batch.get("batchId")},
+                    {
+                        "$set": {
+                            "status": "partial" if news_ids else "failed",
+                            "timedOutAt": datetime.utcnow(),
+                            "updatedAt": datetime.utcnow(),
+                        },
+                    },
+                )
                 self._publish_push_notification_if_ready(batch=batch, force=True)
 
     def monitor_url(self, url: str, interval_seconds: int) -> None:
@@ -286,6 +335,9 @@ class SchedulerService:
             minutes=settings.scheduler_interval_minutes,
             id="default-news-crawl",
             replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=300,
         )
         self.scheduler.add_job(
             self.trigger_keyword_searches,
@@ -293,6 +345,9 @@ class SchedulerService:
             minute="*",
             id="keyword-search-crawl",
             replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=max(60, settings.push_due_window_minutes * 60),
         )
         self.scheduler.start()
 

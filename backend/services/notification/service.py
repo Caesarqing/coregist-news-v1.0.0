@@ -100,7 +100,7 @@ class NotificationService:
             with mongo_collection("push_batches") as collection:
                 collection.update_one(
                     {"batchId": push_batch_id},
-                    {"$set": {"notificationId": notification_id, "status": "completed", "updatedAt": datetime.utcnow()}},
+                    {"$set": {"notificationId": notification_id, "notifiedAt": datetime.utcnow(), "updatedAt": datetime.utcnow()}},
                 )
         self._send_fcm(user_id=user_id, title=title, body=summary, notification_id=notification_id)
         return notification_id

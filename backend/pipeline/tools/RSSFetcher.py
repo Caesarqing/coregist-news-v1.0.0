@@ -176,7 +176,11 @@ def fetch_feed(
             parsed = parse_feed(result['content'])
             return parsed
         else:
-            raise ValueError('Emtpy feed content')
+            errors = result.get("errors") if isinstance(result, dict) else None
+            if isinstance(errors, str):
+                errors = [errors]
+            error_text = "; ".join(str(item) for item in (errors or []) if item) or "Empty feed content"
+            raise ValueError(error_text)
     except Exception as e:
         logger.error(f'Feed fetch fail: {str(e)}', exc_info=True)
 

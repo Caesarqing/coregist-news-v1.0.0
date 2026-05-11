@@ -6,7 +6,7 @@ import { Input } from '~/shared/ui/input';
 import { Checkbox } from '~/shared/ui/checkbox';
 import { Zap, Clock, TrendingUp, X, Calendar, Grid, List, Hash, CheckCircle2, ArrowRight, ArrowLeft, Trash2 } from 'lucide-react';
 import { useLanguage } from '~/contexts/LanguageContext';
-import { userSettingsApi } from '~/api/apiClient';
+import { notificationApi, userSettingsApi, type PushBatchStatus } from '~/api/apiClient';
 import type { PushSettingsEntry } from '~/types/api';
 import { motion } from 'framer-motion';
 import { PageHero } from '~/shared/components/PageHero';
@@ -59,6 +59,7 @@ export function NewsPushPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [keywordError, setKeywordError] = useState('');
+  const [pushBatchStatuses, setPushBatchStatuses] = useState<PushBatchStatus[]>([]);
 
   const loadLocalCachedEntries = (): PushSettingsEntry[] | null => {
     try {
@@ -174,6 +175,18 @@ export function NewsPushPage() {
       }
     };
     loadSettings();
+  }, []);
+
+  useEffect(() => {
+    const loadPushBatchStatuses = async () => {
+      try {
+        const result = await notificationApi.pushBatches(200);
+        setPushBatchStatuses(result.items || []);
+      } catch {
+        setPushBatchStatuses([]);
+      }
+    };
+    loadPushBatchStatuses();
   }, []);
 
   // 推送入口由当前设置生成，无需模拟历史记录
@@ -334,9 +347,77 @@ export function NewsPushPage() {
   };
 
   const openPushEntryNews = (entry: PushEntry) => {
+    const batch = getLatestBatchForEntry(entry);
+    const newsIds = (batch?.matchedNewsIds || []).filter(Boolean).slice(0, batch?.pushCount || entry.pushCount);
+    const params = new URLSearchParams();
+    params.set('keywords', entry.keywords.join(','));
+    params.set('status', batch?.status || 'none');
+    params.set('matchedCount', String(newsIds.length || batch?.matchedCount || 0));
+    params.set('pushCount', String(batch?.pushCount || entry.pushCount));
+    if (batch?.scheduledFor) params.set('scheduledFor', batch.scheduledFor);
+    if (newsIds.length > 0) params.set('newsIds', newsIds.join(','));
     navigate(
-      `/home/news-push/${entry.id}/news?keywords=${encodeURIComponent(entry.keywords.join(','))}`
+      `/home/news-push/${entry.id}/news?${params.toString()}`
     );
+  };
+
+  const getLatestBatchForEntry = (entry: PushEntry) => {
+    return pushBatchStatuses.find((batch) => batch.pushSettingId === entry.id);
+  };
+
+  const actualPushedCount = (batch: PushBatchStatus) => {
+    const matched = (batch.matchedNewsIds || []).filter(Boolean).length || batch.matchedCount || 0;
+    return Math.min(matched, batch.pushCount || matched);
+  };
+
+  const pushStats = (() => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeekDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    startOfWeekDate.setDate(startOfWeekDate.getDate() - ((startOfWeekDate.getDay() + 6) % 7));
+    const startOfWeek = startOfWeekDate.getTime();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    return pushBatchStatuses.reduce(
+      (acc, batch) => {
+        const time = new Date(batch.scheduledFor || batch.createdAt || batch.updatedAt).getTime();
+        if (!Number.isFinite(time)) return acc;
+        const count = actualPushedCount(batch);
+        if (time >= startOfDay) acc.today += count;
+        if (time >= startOfWeek) acc.week += count;
+        if (time >= startOfMonth) acc.month += count;
+        return acc;
+      },
+      { today: 0, week: 0, month: 0 }
+    );
+  })();
+
+  const getBatchStatusText = (batch?: PushBatchStatus) => {
+    if (!batch) {
+      return language === 'zh-CN' ? '暂无执行记录' : 'No runs yet';
+    }
+    const statusLabels: Record<string, string> = language === 'zh-CN'
+      ? {
+          queued: '等待补充',
+          processing: '补充中',
+          ready: '已生成',
+          partial: '部分完成',
+          failed: '未命中',
+        }
+      : {
+          queued: 'Queued',
+          processing: 'Processing',
+          ready: 'Ready',
+          partial: 'Partial',
+          failed: 'No matches',
+        };
+    const label = statusLabels[batch.status] || batch.status || (language === 'zh-CN' ? '未知' : 'Unknown');
+    return `${label} · ${batch.matchedCount}/${batch.pushCount}`;
+  };
+
+  const getBatchTimeText = (batch?: PushBatchStatus) => {
+    if (!batch?.scheduledFor) return '';
+    return new Date(batch.scheduledFor).toLocaleString(language === 'zh-CN' ? 'zh-CN' : 'en-US');
   };
 
   const getPushDaysText = () => {
@@ -694,19 +775,19 @@ export function NewsPushPage() {
                       <p className="text-sm text-indigo-600 font-semibold">
                         {language === 'zh-CN' ? '今日推送' : 'Today'}
                       </p>
-                      <p className="text-3xl font-bold text-indigo-700 mt-2">2</p>
+                      <p className="text-3xl font-bold text-indigo-700 mt-2">{pushStats.today}</p>
                     </div>
                     <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
                       <p className="text-sm text-purple-600 font-semibold">
                         {language === 'zh-CN' ? '本周推送' : 'This Week'}
                       </p>
-                      <p className="text-3xl font-bold text-purple-700 mt-2">14</p>
+                      <p className="text-3xl font-bold text-purple-700 mt-2">{pushStats.week}</p>
                     </div>
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
                       <p className="text-sm text-blue-600 font-semibold">
                         {language === 'zh-CN' ? '本月推送' : 'This Month'}
                       </p>
-                      <p className="text-3xl font-bold text-blue-700 mt-2">52</p>
+                      <p className="text-3xl font-bold text-blue-700 mt-2">{pushStats.month}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -769,12 +850,38 @@ export function NewsPushPage() {
                                   {t('pushCount')} {entry.pushCount}
                                   {t('pushCountPerTimePreview')}
                                 </span>
+                                <span>
+                                  {language === 'zh-CN' ? '最近推送：' : 'Latest: '}
+                                  {getBatchStatusText(getLatestBatchForEntry(entry))}
+                                </span>
+                                {getBatchTimeText(getLatestBatchForEntry(entry)) && (
+                                  <span>
+                                    {language === 'zh-CN' ? '推送时间：' : 'Pushed at: '}
+                                    {getBatchTimeText(getLatestBatchForEntry(entry))}
+                                  </span>
+                                )}
                               </div>
+                              {getLatestBatchForEntry(entry)?.lastError && (
+                                <p className="mt-2 text-xs text-red-600 line-clamp-2">
+                                  {getLatestBatchForEntry(entry)?.lastError}
+                                </p>
+                              )}
                             </div>
                             <div
-                              className="flex items-center shrink-0 self-center"
+                              className="flex items-center gap-2 shrink-0 self-center"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-9 min-w-[112px] rounded-lg"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/notifications');
+                                }}
+                              >
+                                {language === 'zh-CN' ? '查看消息' : 'Messages'}
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -835,11 +942,37 @@ export function NewsPushPage() {
                               {t('pushCount')} {entry.pushCount}
                               {t('pushCountPerTimePreview')}
                             </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {language === 'zh-CN' ? '最近推送：' : 'Latest: '}
+                              {getBatchStatusText(getLatestBatchForEntry(entry))}
+                            </p>
+                            {getBatchTimeText(getLatestBatchForEntry(entry)) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {language === 'zh-CN' ? '推送时间：' : 'Pushed at: '}
+                                {getBatchTimeText(getLatestBatchForEntry(entry))}
+                              </p>
+                            )}
+                            {getLatestBatchForEntry(entry)?.lastError && (
+                              <p className="mt-2 text-xs text-red-600 line-clamp-2">
+                                {getLatestBatchForEntry(entry)?.lastError}
+                              </p>
+                            )}
                           </CardContent>
                           <div
                             className="p-5 pt-0 flex flex-col gap-2"
                             onClick={(e) => e.stopPropagation()}
                           >
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-9 rounded-lg"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/notifications');
+                              }}
+                            >
+                              {language === 'zh-CN' ? '查看消息' : 'Messages'}
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"

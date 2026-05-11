@@ -655,8 +655,13 @@ class AIAnalysisService:
             )
             batch = collection.find_one({"batchId": batch_id}) or {}
         news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {"$set": {"matchedCount": len(news_ids), "updatedAt": datetime.utcnow()}},
+            )
         push_count = self._normalize_push_count(batch.get("pushCount") or payload.get("push_count"))
-        if len(news_ids) < push_count or batch.get("notificationId"):
+        if len(news_ids) < push_count or batch.get("notificationId") or batch.get("notificationQueuedAt"):
             return
         selected_ids = news_ids[:push_count]
         title = "新闻推送已更新"
@@ -673,8 +678,61 @@ class AIAnalysisService:
         with mongo_collection("push_batches") as collection:
             collection.update_one(
                 {"batchId": batch_id},
-                {"$set": {"status": "ready", "updatedAt": datetime.utcnow()}},
+                {"$set": {"status": "ready", "notificationQueuedAt": datetime.utcnow(), "updatedAt": datetime.utcnow()}},
             )
+
+    def _mark_push_batch_ai_failure(self, payload: dict, error: Exception) -> None:
+        batch_id = payload.get("push_batch_id") or ""
+        if not batch_id:
+            return
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$inc": {"aiFailedCount": 1},
+                    "$set": {"lastError": str(error)[:500], "updatedAt": datetime.utcnow()},
+                },
+            )
+            batch = collection.find_one({"batchId": batch_id}) or {}
+        if batch.get("notificationId") or batch.get("notificationQueuedAt"):
+            return
+        search_job_id = payload.get("search_job_id", "")
+        pending_count = 0
+        if search_job_id:
+            with mongo_collection("user_discovery_news") as collection:
+                pending_count = collection.count_documents({
+                    "search_job_id": search_job_id,
+                    "status": {"$nin": ["completed", "failed", "enrichment_failed"]},
+                })
+        if pending_count > 0:
+            return
+        news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
+        push_count = self._normalize_push_count(batch.get("pushCount") or payload.get("push_count"))
+        selected_ids = news_ids[:push_count]
+        if selected_ids:
+            summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 为你找到 {len(selected_ids)} 条相关新闻。"
+        else:
+            summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 暂未找到符合条件的相关新闻。"
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$set": {
+                        "status": "partial" if selected_ids else "failed",
+                        "notificationQueuedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
+        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+            "type": "news_push",
+            "user_id": batch.get("userId") or payload.get("user_id", ""),
+            "title": "新闻推送已更新",
+            "summary": summary,
+            "content": summary,
+            "news_ids": [str(item) for item in selected_ids],
+            "push_batch_id": batch_id,
+        })
 
     def process(self, task: dict, *, publish: bool = True) -> dict:
         payload = None
@@ -849,6 +907,7 @@ class AIAnalysisService:
                         {"$set": {"status": "failed", "error": str(error)[:500], "updatedAt": datetime.utcnow()}},
                     )
             self._sync_user_search_job(payload.get("search_job_id", ""))
+            self._mark_push_batch_ai_failure(payload, error)
             return {
                 "news_id": news_id,
                 "status": "failed",

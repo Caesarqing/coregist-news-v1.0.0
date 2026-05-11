@@ -10,15 +10,15 @@ from services.shared.python.news_identity import build_news_identity, build_news
 from services.shared.python.queue import (
     QUEUE_KEYWORD_SEARCH,
     QUEUE_NEWS_CRAWL_TRIGGER,
+    QUEUE_NEWS_NOTIFICATIONS,
     QUEUE_NEWS_RAW,
     QueueClient,
     mongo_collection,
 )
-from services.shared.python.rss import extract_article, fetch_rss_entries, list_rss_sources
+from services.shared.python.rss import RssFetchError, classify_fetch_errors, extract_article, fetch_rss_entries, list_rss_sources
 from services.shared.python.settings import settings
 
 logger = logging.getLogger(__name__)
-MAX_ENRICHMENT_PER_SEARCH_JOB = 3
 MAX_INGEST_AGE_DAYS = 7
 RSS_ROTATION_STATE_ID = "default"
 
@@ -100,6 +100,128 @@ class NewsScraperService:
                 },
                 upsert=True,
             )
+
+    @staticmethod
+    def _normalize_push_count(value) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = 5
+        return max(1, min(parsed, 20))
+
+    def _publish_push_notification_if_ready(self, *, batch: dict, force: bool = False) -> None:
+        if not batch or batch.get("notificationId") or batch.get("notificationQueuedAt"):
+            return
+        news_ids = [item for item in batch.get("matchedNewsIds", []) if item]
+        push_count = self._normalize_push_count(batch.get("pushCount"))
+        if not force and len(news_ids) < push_count:
+            return
+        selected_ids = news_ids[:push_count]
+        if selected_ids:
+            summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 为你找到 {len(selected_ids)} 条相关新闻。"
+        else:
+            summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 暂未找到符合条件的相关新闻。"
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch.get("batchId", "")},
+                {
+                    "$set": {
+                        "status": "ready" if len(selected_ids) >= push_count else ("partial" if selected_ids else "failed"),
+                        "notificationQueuedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
+        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+            "type": "news_push",
+            "user_id": batch.get("userId", ""),
+            "title": "新闻推送已更新",
+            "summary": summary,
+            "content": summary,
+            "news_ids": [str(item) for item in selected_ids],
+            "push_batch_id": batch.get("batchId", ""),
+        })
+
+    def _add_news_to_push_batch(
+        self,
+        *,
+        batch_id: str,
+        news_object_id,
+        user_id: str,
+        search_job_id: str,
+        query: str,
+        keywords: list[str],
+    ) -> None:
+        if not batch_id or not news_object_id:
+            return
+        if user_id:
+            self._upsert_user_news_map(
+                user_id=user_id,
+                news_object_id=news_object_id,
+                search_job_id=search_job_id,
+                query=query,
+                keywords=keywords,
+            )
+            with mongo_collection("user_news_maps") as collection:
+                collection.update_one(
+                    {"userId": user_id, "newsId": news_object_id},
+                    {"$set": {"push_batch_id": batch_id, "updatedAt": datetime.utcnow()}},
+                )
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$addToSet": {"matchedNewsIds": news_object_id},
+                    "$set": {"updatedAt": datetime.utcnow()},
+                },
+            )
+            batch = collection.find_one({"batchId": batch_id}) or {}
+            matched_count = len([item for item in batch.get("matchedNewsIds", []) if item])
+            collection.update_one(
+                {"batchId": batch_id},
+                {"$set": {"matchedCount": matched_count, "updatedAt": datetime.utcnow()}},
+            )
+            batch["matchedCount"] = matched_count
+        self._publish_push_notification_if_ready(batch=batch)
+
+    def _remaining_push_capacity(self, payload: dict) -> int:
+        batch_id = payload.get("push_batch_id") or ""
+        push_count = self._normalize_push_count(payload.get("push_count"))
+        remaining = payload.get("remaining_count")
+        try:
+            requested_remaining = int(remaining) if remaining is not None else push_count
+        except Exception:
+            requested_remaining = push_count
+        if batch_id:
+            with mongo_collection("push_batches") as collection:
+                batch = collection.find_one({"batchId": batch_id}, {"matchedNewsIds": 1, "pushCount": 1}) or {}
+            push_count = self._normalize_push_count(batch.get("pushCount") or push_count)
+            matched_count = len([item for item in batch.get("matchedNewsIds", []) if item])
+            requested_remaining = max(0, push_count - matched_count)
+        return max(0, min(requested_remaining, settings.push_max_enrichment_per_batch))
+
+    def _finish_push_batch_after_search(self, payload: dict, *, queued_for_ai_count: int) -> None:
+        batch_id = payload.get("push_batch_id") or ""
+        if not batch_id:
+            return
+        with mongo_collection("push_batches") as collection:
+            batch = collection.find_one({"batchId": batch_id}) or {}
+            if not batch:
+                return
+            matched_count = len([item for item in batch.get("matchedNewsIds", []) if item])
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$set": {
+                        "matchedCount": matched_count,
+                        "searchFinishedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
+            batch["matchedCount"] = matched_count
+        if queued_for_ai_count == 0:
+            self._publish_push_notification_if_ready(batch=batch, force=True)
 
     def _create_user_discovery_doc(self, *, payload: dict, result: dict, identity: dict) -> str:
         discovery_id = str(uuid4())
@@ -195,6 +317,7 @@ class NewsScraperService:
         existing_count = 0
         enrichment_failed_count = 0
         enrichment_attempted_count = 0
+        enrichment_limit = settings.push_max_enrichment_per_batch if not keyword_payload.get("push_batch_id") else self._remaining_push_capacity(keyword_payload)
 
         self._upsert_search_job(job_id, {
             "status": "processing",
@@ -284,9 +407,17 @@ class NewsScraperService:
                             query=query,
                             keywords=keyword_payload.get("keywords", []),
                         )
+                        self._add_news_to_push_batch(
+                            batch_id=keyword_payload.get("push_batch_id", ""),
+                            news_object_id=existing_news.get("_id"),
+                            user_id=keyword_payload.get("user_id", ""),
+                            search_job_id=job_id,
+                            query=query,
+                            keywords=keyword_payload.get("keywords", []),
+                        )
                         continue
 
-                    if enrichment_attempted_count >= MAX_ENRICHMENT_PER_SEARCH_JOB:
+                    if enrichment_attempted_count >= enrichment_limit:
                         logger.info(
                             "keyword search capped enrichment job=%s query=%s discovery=%s",
                             job_id,
@@ -359,6 +490,7 @@ class NewsScraperService:
                     continue
 
             self.publish_raw_payloads(payloads)
+            self._finish_push_batch_after_search(keyword_payload, queued_for_ai_count=len(payloads))
             self._upsert_search_job(job_id, {
                 "status": "processing" if payloads else "completed",
                 "finished_at": datetime.utcnow() if not payloads else None,
@@ -390,6 +522,7 @@ class NewsScraperService:
                 "enrichment_attempted_count": enrichment_attempted_count,
                 "queued_for_ai_count": len(payloads),
             })
+            self._finish_push_batch_after_search(keyword_payload, queued_for_ai_count=0)
             return []
 
     def publish_raw_payloads(self, payloads: list[dict]) -> int:
@@ -423,6 +556,38 @@ class NewsScraperService:
     def _rotation_state_for_domain(cls, state: dict, domain: str) -> dict:
         return (state.get("domains") or {}).get(cls._state_key(domain), {}) or {}
 
+    @staticmethod
+    def _rss_error_type(error: Exception | str | None) -> str:
+        if isinstance(error, RssFetchError):
+            return error.error_type or "request_error"
+        return classify_fetch_errors([str(error or "")]) or "request_error"
+
+    @staticmethod
+    def _rss_error_policy(error_type: str) -> dict:
+        if error_type in {"http_403", "http_429", "ssl_error"}:
+            return {
+                "backoff_seconds": settings.rss_http_limited_backoff_seconds,
+                "quarantine_threshold": settings.rss_http_limited_quarantine_threshold,
+                "quarantine_seconds": settings.rss_http_limited_quarantine_seconds,
+            }
+        if error_type == "browser_timeout":
+            return {
+                "backoff_seconds": settings.rss_browser_timeout_backoff_seconds,
+                "quarantine_threshold": settings.rss_timeout_quarantine_threshold,
+                "quarantine_seconds": settings.rss_timeout_quarantine_seconds,
+            }
+        if error_type == "timeout":
+            return {
+                "backoff_seconds": settings.rss_timeout_backoff_seconds,
+                "quarantine_threshold": settings.rss_timeout_quarantine_threshold,
+                "quarantine_seconds": settings.rss_timeout_quarantine_seconds,
+            }
+        return {
+            "backoff_seconds": settings.rss_source_error_backoff_seconds,
+            "quarantine_threshold": settings.rss_timeout_quarantine_threshold,
+            "quarantine_seconds": settings.rss_timeout_quarantine_seconds,
+        }
+
     @classmethod
     def _is_source_available_for_rotation(
         cls,
@@ -451,18 +616,34 @@ class NewsScraperService:
         )
 
         source_state = cls._rotation_state_for_source(state, source.id)
+        if source_state.get("disabled_by_health"):
+            return False
+
+        source_quarantine_until = cls._coerce_datetime(source_state.get("quarantine_until"))
+        if source_quarantine_until and now < source_quarantine_until:
+            return False
+
         last_attempt = cls._coerce_datetime(source_state.get("last_attempt_at"))
         if last_attempt and now - last_attempt < timedelta(seconds=max(0, source_min_interval_seconds)):
             return False
 
         error_count = int(source_state.get("error_count") or 0)
         last_error = cls._coerce_datetime(source_state.get("last_error_at"))
-        if error_count > 0 and last_error and now - last_error < timedelta(seconds=max(0, source_error_backoff_seconds)):
+        error_type = source_state.get("last_error_type") or ""
+        backoff_seconds = (
+            cls._rss_error_policy(error_type).get("backoff_seconds")
+            if error_type
+            else source_error_backoff_seconds
+        )
+        if error_count > 0 and last_error and now - last_error < timedelta(seconds=max(0, backoff_seconds)):
             return False
 
         domain = cls._rss_domain(source)
         if domain:
             domain_state = cls._rotation_state_for_domain(state, domain)
+            domain_quarantine_until = cls._coerce_datetime(domain_state.get("quarantine_until"))
+            if domain_quarantine_until and now < domain_quarantine_until:
+                return False
             last_domain_attempt = cls._coerce_datetime(domain_state.get("last_attempt_at"))
             if last_domain_attempt and now - last_domain_attempt < timedelta(seconds=max(0, domain_min_interval_seconds)):
                 return False
@@ -567,16 +748,27 @@ class NewsScraperService:
     def _mark_rss_source_success(self, source, *, now: datetime | None = None) -> None:
         current = now or self._utc_now()
         source_key = self._state_key(source.id)
+        domain = self._rss_domain(source)
+        set_values = {
+            f"sources.{source_key}.source_id": source.id,
+            f"sources.{source_key}.last_success_at": current,
+            f"sources.{source_key}.error_count": 0,
+            f"sources.{source_key}.consecutive_failures": 0,
+            f"sources.{source_key}.last_error_type": "",
+            f"sources.{source_key}.quarantine_until": None,
+            f"sources.{source_key}.disabled_by_health": False,
+            "updatedAt": datetime.utcnow(),
+        }
+        if domain:
+            domain_key = self._state_key(domain)
+            set_values[f"domains.{domain_key}.hostname"] = domain
+            set_values[f"domains.{domain_key}.last_error_type"] = ""
+            set_values[f"domains.{domain_key}.quarantine_until"] = None
         with mongo_collection(settings.rss_rotation_state_collection) as collection:
             collection.update_one(
                 {"_id": RSS_ROTATION_STATE_ID},
                 {
-                    "$set": {
-                        f"sources.{source_key}.source_id": source.id,
-                        f"sources.{source_key}.last_success_at": current,
-                        f"sources.{source_key}.error_count": 0,
-                        "updatedAt": datetime.utcnow(),
-                    },
+                    "$set": set_values,
                     "$setOnInsert": {"createdAt": datetime.utcnow()},
                 },
                 upsert=True,
@@ -585,16 +777,48 @@ class NewsScraperService:
     def _mark_rss_source_error(self, source, error: Exception, *, now: datetime | None = None) -> None:
         current = now or self._utc_now()
         source_key = self._state_key(source.id)
+        domain = self._rss_domain(source)
+        error_type = self._rss_error_type(error)
+        policy = self._rss_error_policy(error_type)
         with mongo_collection(settings.rss_rotation_state_collection) as collection:
+            state = collection.find_one({"_id": RSS_ROTATION_STATE_ID}) or {}
+            source_state = self._rotation_state_for_source(state, source.id)
+            consecutive_failures = int(source_state.get("consecutive_failures") or 0) + 1
+            error_count = int(source_state.get("error_count") or 0) + 1
+            quarantine_count = int(source_state.get("quarantine_count") or 0)
+            quarantine_until = None
+            disabled_by_health = bool(source_state.get("disabled_by_health"))
+            if consecutive_failures >= int(policy["quarantine_threshold"]):
+                quarantine_until = current + timedelta(seconds=max(0, int(policy["quarantine_seconds"])))
+                quarantine_count += 1
+            if (
+                quarantine_count >= settings.rss_quarantine_repeats_to_disable
+                or consecutive_failures >= settings.rss_disable_after_failures
+            ):
+                disabled_by_health = True
+
+            set_values = {
+                f"sources.{source_key}.source_id": source.id,
+                f"sources.{source_key}.last_error_at": current,
+                f"sources.{source_key}.last_error": str(error)[:500],
+                f"sources.{source_key}.last_error_type": error_type,
+                f"sources.{source_key}.consecutive_failures": consecutive_failures,
+                f"sources.{source_key}.quarantine_count": quarantine_count,
+                f"sources.{source_key}.disabled_by_health": disabled_by_health,
+                "updatedAt": datetime.utcnow(),
+            }
+            if quarantine_until:
+                set_values[f"sources.{source_key}.quarantine_until"] = quarantine_until
+            if domain:
+                domain_key = self._state_key(domain)
+                set_values[f"domains.{domain_key}.hostname"] = domain
+                set_values[f"domains.{domain_key}.last_error_type"] = error_type
+                if quarantine_until:
+                    set_values[f"domains.{domain_key}.quarantine_until"] = quarantine_until
             collection.update_one(
                 {"_id": RSS_ROTATION_STATE_ID},
                 {
-                    "$set": {
-                        f"sources.{source_key}.source_id": source.id,
-                        f"sources.{source_key}.last_error_at": current,
-                        f"sources.{source_key}.last_error": str(error)[:500],
-                        "updatedAt": datetime.utcnow(),
-                    },
+                    "$set": set_values,
                     "$inc": {
                         f"sources.{source_key}.error_count": 1,
                     },
@@ -636,6 +860,7 @@ class NewsScraperService:
         elif source_limit:
             sources = sources[: max(1, int(source_limit))]
         with mongo_collection("news") as collection:
+            run_stats = {"success_sources": 0, "failed_sources": 0, "skipped_articles": 0}
             for source in sources:
                 if should_rotate:
                     self._mark_rss_source_attempt(source)
@@ -648,7 +873,28 @@ class NewsScraperService:
                         if not url or url in seen_urls:
                             continue
                         seen_urls.add(url)
-                        article = extract_article(source, entry)
+                        try:
+                            article = extract_article(source, entry)
+                        except RssFetchError as exc:
+                            run_stats["skipped_articles"] += 1
+                            logger.warning(
+                                "rss article skipped source=%s url=%s error_type=%s error=%s",
+                                source.id,
+                                url,
+                                exc.error_type,
+                                exc,
+                            )
+                            continue
+                        except Exception as exc:
+                            run_stats["skipped_articles"] += 1
+                            logger.warning(
+                                "rss article skipped source=%s url=%s error_type=%s error=%s",
+                                source.id,
+                                url,
+                                self._rss_error_type(exc),
+                                exc,
+                            )
+                            continue
                         if not self._is_ingestable_posted_at(article.get("published_at")):
                             logger.info(
                                 "rss skipped stale article source=%s title=%s published_at=%s",
@@ -686,6 +932,8 @@ class NewsScraperService:
                             "image_fallback_type": article.get("image_fallback_type", ""),
                             "source_logo_url": article.get("source_logo_url", ""),
                             "errors": article.get("errors", []),
+                            "content_quality": article.get("content_quality", "full"),
+                            "scrape_error_type": article.get("scrape_error_type", ""),
                             "crawled_at": datetime.utcnow().isoformat(),
                             "posted_at": article.get("published_at"),
                             "feed_name": article.get("feed_name"),
@@ -703,12 +951,23 @@ class NewsScraperService:
                         if callable(on_item):
                             on_item(items[-1])
                 except Exception as exc:
+                    run_stats["failed_sources"] += 1
                     logger.exception("rss source failed source=%s feed_url=%s", source.id, source.feed_url)
                     if should_rotate:
                         self._mark_rss_source_error(source, exc)
                     continue
                 if should_rotate and source_succeeded:
                     self._mark_rss_source_success(source)
+                if source_succeeded:
+                    run_stats["success_sources"] += 1
+            if should_rotate:
+                logger.info(
+                    "rss rotation finished success_sources=%s failed_sources=%s skipped_articles=%s emitted_items=%s",
+                    run_stats["success_sources"],
+                    run_stats["failed_sources"],
+                    run_stats["skipped_articles"],
+                    len(items),
+                )
         return items
 
     def crawl_rss_sources(
@@ -732,34 +991,43 @@ class NewsScraperService:
         return payloads
 
     def consume_triggers(self) -> None:
-        def _handle_crawl(payload: dict) -> None:
-            mode = (payload.get("mode") or "rss").strip().lower()
-            if mode == "search":
-                self.crawl_news(payload.get("query") or settings.search_default_query)
-                return
-
-            source_ids = [str(item).strip() for item in payload.get("source_ids", []) if str(item).strip()]
-            publisher_ids = [str(item).strip() for item in payload.get("publisher_ids", []) if str(item).strip()]
-            limit_per_feed = payload.get("limit_per_feed")
-            source_limit = payload.get("source_limit")
-            rotate_sources = bool(payload.get("rotate_sources", False))
-            self.crawl_rss_sources(
-                source_ids=source_ids or None,
-                publisher_ids=publisher_ids or None,
-                limit_per_feed=self._resolve_feed_limit(int(limit_per_feed)) if limit_per_feed else None,
-                source_limit=max(1, int(source_limit)) if source_limit else None,
-                rotate_sources=rotate_sources,
-                publish=bool(payload.get("publish_raw", False)),
-            )
-
-        def _handle_keyword_search(payload: dict) -> None:
-            query = (payload.get("query") or "").strip() or settings.search_default_query
-            self.crawl_news(query, keyword_payload=payload)
-
+        logger.info("news scraper combined consumer is starting")
         self.queue.consume_many({
-            QUEUE_NEWS_CRAWL_TRIGGER: _handle_crawl,
-            QUEUE_KEYWORD_SEARCH: _handle_keyword_search,
+            QUEUE_NEWS_CRAWL_TRIGGER: self.handle_crawl_trigger,
+            QUEUE_KEYWORD_SEARCH: self.handle_keyword_search,
         })
+
+    def handle_crawl_trigger(self, payload: dict) -> None:
+        mode = (payload.get("mode") or "rss").strip().lower()
+        if mode == "search":
+            self.crawl_news(payload.get("query") or settings.search_default_query)
+            return
+
+        source_ids = [str(item).strip() for item in payload.get("source_ids", []) if str(item).strip()]
+        publisher_ids = [str(item).strip() for item in payload.get("publisher_ids", []) if str(item).strip()]
+        limit_per_feed = payload.get("limit_per_feed")
+        source_limit = payload.get("source_limit")
+        rotate_sources = bool(payload.get("rotate_sources", False))
+        self.crawl_rss_sources(
+            source_ids=source_ids or None,
+            publisher_ids=publisher_ids or None,
+            limit_per_feed=self._resolve_feed_limit(int(limit_per_feed)) if limit_per_feed else None,
+            source_limit=max(1, int(source_limit)) if source_limit else None,
+            rotate_sources=rotate_sources,
+            publish=bool(payload.get("publish_raw", False)),
+        )
+
+    def handle_keyword_search(self, payload: dict) -> None:
+        query = (payload.get("query") or "").strip() or settings.search_default_query
+        self.crawl_news(query, keyword_payload=payload)
+
+    def consume_crawl_triggers(self) -> None:
+        logger.info("rss crawl consumer is starting")
+        self.queue.consume(QUEUE_NEWS_CRAWL_TRIGGER, self.handle_crawl_trigger)
+
+    def consume_keyword_searches(self) -> None:
+        logger.info("keyword search consumer is starting")
+        self.queue.consume(QUEUE_KEYWORD_SEARCH, self.handle_keyword_search)
 
 
 if __name__ == "__main__":

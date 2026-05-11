@@ -9,7 +9,6 @@ from urllib.parse import quote_plus, urlparse
 import feedparser
 from bs4 import BeautifulSoup
 import requests
-import urllib3
 from ai.file_registry import load_file_agents, load_file_skills
 from services.shared.python.agent_registry import Agent, AgentRegistry, AgentType
 from services.shared.python.llm import LLMProvider
@@ -63,13 +62,16 @@ def _select_search_sources(query: str):
 def _http_get_no_proxy(url: str, *, timeout: int = 8, allow_redirects: bool = True) -> requests.Response:
     session = requests.Session()
     session.trust_env = False
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    hostname = (urlparse(url).hostname or "").lower()
+    allow_insecure_hosts = tuple(getattr(settings, "rss_allow_insecure_hosts", ()) or ())
+    verify_ssl = bool(getattr(settings, "rss_verify_ssl", True))
+    verify = verify_ssl and not any(hostname == host or hostname.endswith(f".{host}") for host in allow_insecure_hosts)
     response = session.get(
         url,
         headers={"User-Agent": "Mozilla/5.0"},
         timeout=timeout,
         allow_redirects=allow_redirects,
-        verify=False,
+        verify=verify,
     )
     response.raise_for_status()
     return response

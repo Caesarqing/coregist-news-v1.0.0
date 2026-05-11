@@ -47,7 +47,7 @@ export function ProfilePage() {
         navigate('/profile/general');
         break;
       case 'notifications':
-        navigate('/profile/notification');
+        navigate('/notifications');
         break;
       case 'privacy':
         navigate('/profile/privacy');

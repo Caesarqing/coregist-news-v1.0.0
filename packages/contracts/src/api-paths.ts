@@ -17,6 +17,7 @@ export const API_PATHS = {
   notifications: {
     list: '/notifications',
     unreadCount: '/notifications/unread-count',
+    pushBatches: '/notifications/push-batches',
     pushToken: '/notifications/push-token',
     read: (id: string) => `/notifications/${id}/read`,
     readAll: '/notifications/read-all',

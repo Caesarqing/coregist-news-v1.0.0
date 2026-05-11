@@ -145,6 +145,78 @@ class RssRotationTest(unittest.TestCase):
 
         self.assertEqual([source.id for source in selected], ["source:b"])
 
+    def test_skips_quarantined_source(self):
+        sources = [make_source("source:a"), make_source("source:b")]
+        now = datetime(2026, 5, 9, 2, 0, 0)
+        state = {
+            "cursor": 0,
+            "sources": {
+                "source:a": {
+                    "quarantine_until": now + timedelta(hours=1),
+                    "last_error_type": "http_403",
+                },
+            },
+        }
+
+        selected, _cursor = NewsScraperService.select_rotating_sources(
+            sources,
+            state=state,
+            source_limit=2,
+            now=now,
+            source_min_interval_seconds=0,
+        )
+
+        self.assertEqual([source.id for source in selected], ["source:b"])
+
+    def test_skips_health_disabled_source(self):
+        sources = [make_source("source:a"), make_source("source:b")]
+        now = datetime(2026, 5, 9, 2, 0, 0)
+        state = {
+            "cursor": 0,
+            "sources": {
+                "source:a": {
+                    "disabled_by_health": True,
+                },
+            },
+        }
+
+        selected, _cursor = NewsScraperService.select_rotating_sources(
+            sources,
+            state=state,
+            source_limit=2,
+            now=now,
+            source_min_interval_seconds=0,
+        )
+
+        self.assertEqual([source.id for source in selected], ["source:b"])
+
+    def test_skips_quarantined_domain(self):
+        sources = [
+            make_source("source:a", feed_url="https://example.com/a.xml"),
+            make_source("source:b", feed_url="https://other.example.com/rss.xml"),
+        ]
+        now = datetime(2026, 5, 9, 2, 0, 0)
+        state = {
+            "cursor": 0,
+            "domains": {
+                "example__dot__com": {
+                    "hostname": "example.com",
+                    "quarantine_until": now + timedelta(hours=1),
+                    "last_error_type": "http_429",
+                },
+            },
+        }
+
+        selected, _cursor = NewsScraperService.select_rotating_sources(
+            sources,
+            state=state,
+            source_limit=2,
+            now=now,
+            domain_min_interval_seconds=0,
+        )
+
+        self.assertEqual([source.id for source in selected], ["source:b"])
+
     def test_explicit_source_filter_does_not_use_rotation(self):
         service = object.__new__(NewsScraperService)
         explicit_source = make_source("source:a")

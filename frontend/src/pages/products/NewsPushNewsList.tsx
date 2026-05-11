@@ -4,7 +4,7 @@ import { Card, CardContent } from '~/shared/ui/card';
 import { Button } from '~/shared/ui/button';
 import { ImageWithFallback } from '~/shared/components/ImageWithFallback';
 import { Newspaper, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
-import { newsApi, searchApi, type NewsItem, type SearchJobSnapshot } from '~/api/apiClient';
+import { newsApi, type NewsItem } from '~/api/apiClient';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { PageHero } from '~/shared/components/PageHero';
 import { Badge } from '~/shared/ui/badge';
@@ -12,7 +12,7 @@ import { formatNewsDate, mapNewsItem } from '~/utils/news';
 
 /**
  * 我的新闻列表页面
- * - 根据关键词展示相关新闻
+ * - 根据推送批次展示相关新闻
  * - 使用与新闻中心相同的展示风格
  */
 export function NewsPushNewsListPage() {
@@ -25,6 +25,11 @@ export function NewsPushNewsListPage() {
   const keywords = keywordsParam ? keywordsParam.split(',') : [];
   const notificationNewsIdsParam = searchParams.get('newsIds') || '';
   const notificationNewsIds = notificationNewsIdsParam.split(',').map((item) => item.trim()).filter(Boolean);
+  const batchStatus = searchParams.get('status') || '';
+  const batchMatchedCount = Number(searchParams.get('matchedCount') || notificationNewsIds.length || 0);
+  const batchPushCount = Number(searchParams.get('pushCount') || 0);
+  const scheduledFor = searchParams.get('scheduledFor') || '';
+  const isProcessingBatch = ['queued', 'processing'].includes(batchStatus);
   const heroTitle = language === 'zh-CN' ? '我的新闻' : 'My News';
   const heroDescription = keywords.length > 0
     ? (language === 'zh-CN' 
@@ -36,8 +41,6 @@ export function NewsPushNewsListPage() {
 
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [job, setJob] = useState<SearchJobSnapshot | null>(null);
-  const [jobId, setJobId] = useState('');
 
   // 转换后端数据格式
   const transformNewsItem = useCallback(
@@ -51,7 +54,7 @@ export function NewsPushNewsListPage() {
     [language, t]
   );
 
-  // 获取新闻列表（根据关键词）
+  // 获取新闻列表（根据推送批次绑定的 newsIds）
   const fetchNewsData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -60,57 +63,21 @@ export function NewsPushNewsListPage() {
           notificationNewsIds.map((newsId) => newsApi.getNewsDetail(newsId, language).catch(() => null))
         );
         setNewsData(detailItems.filter(Boolean).map(transformNewsItem) as NewsItem[]);
-        setJobId('');
         return;
       }
-      const result = await searchApi.query({
-        query: keywords.join(' '),
-        mode: 'news',
-        page: 1,
-        limit: 100,
-        allow_discovery: true,
-      });
-      const transformedNews: NewsItem[] = result.items.map(transformNewsItem);
-      setNewsData(transformedNews);
-      if (result.search_job?.job_id) {
-        setJobId(result.search_job.job_id);
-      }
+      setNewsData([]);
     } catch (error) {
       console.error('获取新闻列表失败:', error);
       setNewsData([]);
     } finally {
       setIsLoading(false);
     }
-  }, [keywordsParam, language, notificationNewsIdsParam, transformNewsItem]);
+  }, [language, notificationNewsIdsParam, transformNewsItem]);
 
   // 初始加载
   useEffect(() => {
     fetchNewsData();
   }, [fetchNewsData]);
-
-  useEffect(() => {
-    if (!jobId) return;
-    let cancelled = false;
-    const timer = window.setInterval(async () => {
-      try {
-        const snapshot = await searchApi.getJob(jobId);
-        if (cancelled) return;
-        setJob(snapshot);
-        if (snapshot.status === 'completed' || snapshot.status === 'failed') {
-          window.clearInterval(timer);
-          await fetchNewsData();
-        }
-      } catch (error) {
-        console.error('获取搜索任务状态失败:', error);
-        window.clearInterval(timer);
-      }
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [fetchNewsData, jobId]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-background">
@@ -135,12 +102,21 @@ export function NewsPushNewsListPage() {
 
       {/* 新闻列表内容区域 */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        {jobId && (
+        {isProcessingBatch && (
           <Card className="border border-border mb-6">
             <CardContent className="p-4 text-sm text-muted-foreground">
               {language === 'zh-CN'
-                ? `后台正在根据关键词补充搜索新闻。当前状态：${job?.status || 'queued'}`
-                : `Background search is fetching more news for your keywords. Current status: ${job?.status || 'queued'}`}
+                ? `后台正在补充本次推送新闻。当前状态：${batchStatus || 'queued'}`
+                : `This push is still collecting matching news. Current status: ${batchStatus || 'queued'}`}
+            </CardContent>
+          </Card>
+        )}
+        {(batchStatus || batchPushCount > 0 || scheduledFor) && (
+          <Card className="border border-border mb-6">
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              {language === 'zh-CN'
+                ? `本次推送：${batchMatchedCount}/${batchPushCount || batchMatchedCount} 条${scheduledFor ? ` · ${new Date(scheduledFor).toLocaleString('zh-CN')}` : ''}`
+                : `This push: ${batchMatchedCount}/${batchPushCount || batchMatchedCount} items${scheduledFor ? ` · ${new Date(scheduledFor).toLocaleString('en-US')}` : ''}`}
             </CardContent>
           </Card>
         )}
@@ -153,9 +129,15 @@ export function NewsPushNewsListPage() {
           <Card className="border border-border">
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground">
-                {t('noRecommendations')}
+                {isProcessingBatch
+                  ? (language === 'zh-CN' ? '本次推送仍在补充新闻，请稍后再看。' : 'This push is still collecting news. Please check again later.')
+                  : (language === 'zh-CN' ? '暂无到点推送结果' : 'No scheduled push results yet')}
               </p>
-              <p className="text-sm text-muted-foreground mt-2">{t('checkKeywordsOrTryLater')}</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {language === 'zh-CN'
+                  ? '这里只展示消息通知或推送批次绑定的新闻，不会自动扩大搜索全库新闻。'
+                  : 'Only news linked to this notification or push batch is shown here.'}
+              </p>
             </CardContent>
           </Card>
         ) : (

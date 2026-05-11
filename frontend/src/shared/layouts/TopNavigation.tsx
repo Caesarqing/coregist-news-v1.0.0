@@ -7,6 +7,7 @@ import { Logo } from '~/shared/components/Logo';
 import { BrandName } from '~/shared/components/BrandName';
 import { LanguageSwitcher } from '~/shared/components/LanguageSwitcher';
 import { ThemeToggle } from '~/shared/components/ThemeToggle';
+import { Button } from '~/shared/ui/button';
 
 interface TopNavigationProps {
   activeTab: string;
@@ -94,10 +95,12 @@ export function TopNavigation({ activeTab }: TopNavigationProps) {
 
           {/* 右侧语言切换器 */}
           <div className="flex items-center gap-1.5 sm:gap-2 justify-self-end">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => navigate('/notifications')}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              className="relative h-9 w-9 rounded-full border border-border/70 bg-background/80 text-foreground hover:bg-muted"
               aria-label="Notifications"
             >
               <Bell className="h-4 w-4" />
@@ -106,7 +109,7 @@ export function TopNavigation({ activeTab }: TopNavigationProps) {
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
-            </button>
+            </Button>
             <ThemeToggle />
             <LanguageSwitcher showLabel={false} />
           </div>

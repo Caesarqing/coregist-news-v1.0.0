@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -15,6 +16,20 @@ def bool_from_env(name: str, fallback: bool) -> bool:
     if raw is None:
         return fallback
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def timezone_from_env(name: str, fallback: str) -> str:
+    value = (os.getenv(name) or fallback).strip() or fallback
+    try:
+        ZoneInfo(value)
+        return value
+    except ZoneInfoNotFoundError:
+        return fallback
+
+
+def csv_from_env(name: str, fallback: str = "") -> tuple[str, ...]:
+    raw = os.getenv(name, fallback)
+    return tuple(item.strip().lower() for item in raw.split(",") if item.strip())
 
 
 @dataclass(slots=True)
@@ -35,6 +50,20 @@ class ServiceSettings:
     rss_domain_min_interval_seconds: int = int(os.getenv("RSS_DOMAIN_MIN_INTERVAL_SECONDS", "300"))
     rss_source_error_backoff_seconds: int = int(os.getenv("RSS_SOURCE_ERROR_BACKOFF_SECONDS", "1800"))
     rss_rotation_state_collection: str = os.getenv("RSS_ROTATION_STATE_COLLECTION", "rss_crawl_state")
+    rss_verify_ssl: bool = bool_from_env("RSS_VERIFY_SSL", True)
+    rss_allow_insecure_hosts: tuple[str, ...] = csv_from_env("RSS_ALLOW_INSECURE_HOSTS", "")
+    rss_request_timeout_seconds: int = int(os.getenv("RSS_REQUEST_TIMEOUT_SECONDS", "10"))
+    rss_feed_timeout_ms: int = int(os.getenv("RSS_FEED_TIMEOUT_MS", "8000"))
+    rss_browser_timeout_ms: int = int(os.getenv("RSS_BROWSER_TIMEOUT_MS", "12000"))
+    rss_timeout_backoff_seconds: int = int(os.getenv("RSS_TIMEOUT_BACKOFF_SECONDS", "1800"))
+    rss_browser_timeout_backoff_seconds: int = int(os.getenv("RSS_BROWSER_TIMEOUT_BACKOFF_SECONDS", "3600"))
+    rss_http_limited_backoff_seconds: int = int(os.getenv("RSS_HTTP_LIMITED_BACKOFF_SECONDS", "21600"))
+    rss_timeout_quarantine_threshold: int = int(os.getenv("RSS_TIMEOUT_QUARANTINE_THRESHOLD", "5"))
+    rss_http_limited_quarantine_threshold: int = int(os.getenv("RSS_HTTP_LIMITED_QUARANTINE_THRESHOLD", "3"))
+    rss_timeout_quarantine_seconds: int = int(os.getenv("RSS_TIMEOUT_QUARANTINE_SECONDS", "21600"))
+    rss_http_limited_quarantine_seconds: int = int(os.getenv("RSS_HTTP_LIMITED_QUARANTINE_SECONDS", "86400"))
+    rss_quarantine_repeats_to_disable: int = int(os.getenv("RSS_QUARANTINE_REPEATS_TO_DISABLE", "3"))
+    rss_disable_after_failures: int = int(os.getenv("RSS_DISABLE_AFTER_FAILURES", "12"))
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai-compatible")
     llm_base_url: str = os.getenv("LLM_BASE_URL", "")
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
@@ -63,9 +92,11 @@ class ServiceSettings:
     ai_review_temperature: float = float(os.getenv("AI_REVIEW_TEMPERATURE", "0.1"))
     ai_review_json_mode: bool = bool_from_env("AI_REVIEW_JSON_MODE", llm_json_mode)
     notification_email: str = os.getenv("NOTIFICATION_EMAIL", "user@example.com")
+    push_timezone: str = timezone_from_env("PUSH_TIMEZONE", "Asia/Shanghai")
     push_due_window_minutes: int = int(os.getenv("PUSH_DUE_WINDOW_MINUTES", "5"))
     push_existing_news_lookback_hours: int = int(os.getenv("PUSH_EXISTING_NEWS_LOOKBACK_HOURS", "72"))
     push_batch_completion_timeout_minutes: int = int(os.getenv("PUSH_BATCH_COMPLETION_TIMEOUT_MINUTES", "30"))
+    push_max_enrichment_per_batch: int = int(os.getenv("PUSH_MAX_ENRICHMENT_PER_BATCH", "20"))
     fcm_server_key: str = os.getenv("FCM_SERVER_KEY", "")
     agent_config_port: int = int(os.getenv("AGENT_CONFIG_PORT", "3003"))
     skill_config_port: int = int(os.getenv("SKILL_CONFIG_PORT", "3004"))

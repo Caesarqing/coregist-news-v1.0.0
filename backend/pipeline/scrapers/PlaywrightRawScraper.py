@@ -10,12 +10,16 @@ Complete implementation with:
 """
 import random
 import traceback
+import logging
 from urllib.parse import urlparse
 from typing import Optional, Dict, Any, List
 from playwright.sync_api import sync_playwright
 
 from pipeline.scrapers.ScraperBase import ScraperResult, ProxyConfig
 from pipeline.tools.ProxyFormatParser import to_playwright_format, parse_to_intermediate
+from services.shared.python.settings import settings
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 8000  # 8 seconds
 
@@ -131,13 +135,19 @@ def request_by_browser(
     :param proxy:
     :return:
     """
+    hostname = (urlparse(url).hostname or "").lower()
+    allow_insecure_hosts = tuple(getattr(settings, "rss_allow_insecure_hosts", ()) or ())
+    verify_ssl = bool(getattr(settings, "rss_verify_ssl", True))
+    ignore_https_errors = not verify_ssl or any(
+        hostname == host or hostname.endswith(f".{host}") for host in allow_insecure_hosts
+    )
     context_args = {
         "user_agent": random.choice(DEFAULT_USER_AGENTS),
         "viewport": {"width": 1366, "height": 768},
         "locale": "en-US",
         "timezone_id": "America/New_York",
         "java_script_enabled": True,
-        "ignore_https_errors": True,
+        "ignore_https_errors": ignore_https_errors,
         "extra_http_headers": {
             "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",  # 指定内容类型
         }
@@ -150,7 +160,7 @@ def request_by_browser(
                     response = page.goto(url, timeout=timeout, wait_until="domcontentloaded")
                     return handler(page, response)
                 except Exception as e:
-                    print(f'request_by_browser gets exception: {str(e)}')
+                    logger.warning("browser fetch failed url=%s error=%s", url, e)
                     # print(traceback.format_exc())
                     return {'content': '', "errors": [str(e)]}
 

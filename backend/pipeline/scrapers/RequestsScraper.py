@@ -1,10 +1,12 @@
 import gzip
+import logging
 import zlib
 import random
 import os
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
+from urllib.parse import urlparse
 
 from pipeline.scrapers.ScraperBase import ScraperResult, ProxyConfig
 
@@ -13,6 +15,37 @@ try:
 except ImportError:
     brotli = None
 
+try:
+    from services.shared.python.settings import settings
+except Exception:
+    settings = None
+
+logger = logging.getLogger(__name__)
+
+
+def _configured_verify_ssl(url: str) -> bool:
+    verify_ssl = True if settings is None else bool(getattr(settings, "rss_verify_ssl", True))
+    if not verify_ssl:
+        return False
+    hostname = (urlparse(url).hostname or "").lower()
+    allowed_hosts = () if settings is None else tuple(getattr(settings, "rss_allow_insecure_hosts", ()) or ())
+    return not any(hostname == host or hostname.endswith(f".{host}") for host in allowed_hosts)
+
+
+def _classify_request_exception(exc: Exception) -> str:
+    if isinstance(exc, requests.exceptions.SSLError):
+        return "ssl_error"
+    if isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)):
+        return "timeout"
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status == 403:
+            return "http_403"
+        if status == 429:
+            return "http_429"
+        return f"http_{status}"
+    return "request_error"
+
 
 class RequestsScraper:
     def __init__(self, proxies: Optional[dict] = None):
@@ -20,6 +53,7 @@ class RequestsScraper:
         # 开发机上常通过系统代理访问外网，默认信任环境代理；如需关闭可显式设置 COREGIST_TRUST_ENV_PROXY=0。
         self.session.trust_env = os.getenv('COREGIST_TRUST_ENV_PROXY', '1') != '0'
         self.session.proxies = proxies or {}
+        self.last_errors: list[str] = []
         self._init_headers()
 
     def _init_headers(self):
@@ -93,6 +127,7 @@ class RequestsScraper:
         self.session.proxies = proxies
 
     def fetch(self, url, timeout=15) -> Optional[str]:
+        self.last_errors = []
         try:
             # 启用stream模式并禁用自动解压
             response = self.session.get(
@@ -101,7 +136,7 @@ class RequestsScraper:
                 timeout=timeout,
                 allow_redirects=True,
                 stream=True,
-                verify=False            # TODO: Fix certs issue
+                verify=_configured_verify_ssl(url),
             )
             response.raise_for_status()
 
@@ -114,9 +149,12 @@ class RequestsScraper:
 
             return self._decode_response(response, raw_content)
         except requests.exceptions.RequestException as e:
-            print(f"请求失败: {str(e)}")
+            error_type = _classify_request_exception(e)
+            self.last_errors = [error_type, str(e)]
+            logger.warning("request fetch failed url=%s error_type=%s error=%s", url, error_type, e)
         except Exception as e:
-            print(f"意外错误: {str(e)}")
+            self.last_errors = ["request_error", str(e)]
+            logger.warning("request fetch unexpected failure url=%s error=%s", url, e)
         return None
 
 
@@ -199,7 +237,8 @@ def fetch_content(
     """
 
     scraper = RequestsScraper(proxy)
-    html_content = scraper.fetch(url, int(timeout_ms / 1000))
+    timeout_seconds = max(1, int(timeout_ms / 1000))
+    html_content = scraper.fetch(url, timeout_seconds)
     if html_content:
         is_valid, score, issues = check_content_quality(html_content, format)
         return {
@@ -211,7 +250,7 @@ def fetch_content(
     else:
         return {
             'content': '',
-            'errors': [],
+            'errors': scraper.last_errors,
         }
 
 

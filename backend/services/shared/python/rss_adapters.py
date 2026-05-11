@@ -13,6 +13,7 @@ from pipeline.tools.RSSFetcher import fetch_feed
 from pipeline.scrubbers.HTMLConvertor import html_content_converter
 from pipeline.scrubbers.UnicodeSanitizer import sanitize_unicode_string
 from services.shared.python.rss_registry import RssSource
+from services.shared.python.settings import settings
 
 Fetcher = Callable[..., Dict[str, Any]]
 
@@ -30,6 +31,43 @@ class AdapterConfig:
 
 
 DEFAULT_ADAPTER = AdapterConfig(id="generic_news")
+
+
+class RssFetchError(RuntimeError):
+    def __init__(self, message: str, *, error_type: str = "request_error"):
+        super().__init__(message)
+        self.error_type = error_type
+
+
+def _normalize_errors(errors: Any) -> list[str]:
+    if not errors:
+        return []
+    if isinstance(errors, str):
+        return [errors]
+    if isinstance(errors, (list, tuple, set)):
+        return [str(item) for item in errors if item]
+    return [str(errors)]
+
+
+def classify_fetch_errors(errors: Any, *, backend: str = "") -> str:
+    normalized = " ".join(_normalize_errors(errors)).lower()
+    if not normalized:
+        return ""
+    if "http_403" in normalized or "http response: 403" in normalized or "403 client error" in normalized:
+        return "http_403"
+    if "http_429" in normalized or "http response: 429" in normalized or "429 client error" in normalized:
+        return "http_429"
+    if "ssl_error" in normalized or ("ssl" in normalized and ("certificate" in normalized or "wrong version" in normalized)):
+        return "ssl_error"
+    if "timeout" in normalized or "timed out" in normalized:
+        return "browser_timeout" if backend in {"raw", "rendered"} else "timeout"
+    if "empty feed content" in normalized or "emtpy feed content" in normalized:
+        return "empty_feed"
+    if "parse" in normalized or "bozo" in normalized or "syntax error" in normalized:
+        return "parse_error"
+    if "http_" in normalized or "http response:" in normalized or "client error" in normalized:
+        return "http_error"
+    return "request_error"
 
 
 
@@ -277,8 +315,14 @@ def fetch_rss_entries(source: RssSource, max_items: int = 10) -> List[Dict[str, 
         fetch_content=feed_fetcher,
         proxy=None,
         headless=True,
-        timeout_ms=4000,
+        timeout_ms=settings.rss_feed_timeout_ms,
     )
+    if getattr(feed, "fatal", False):
+        error_type = classify_fetch_errors(getattr(feed, "errors", []), backend=config.feed_backend) or "request_error"
+        raise RssFetchError(
+            f"RSS feed fetch failed for {source.id}: {'; '.join(_normalize_errors(getattr(feed, 'errors', []))) or error_type}",
+            error_type=error_type,
+        )
     items: List[Dict[str, Any]] = []
     for entry in list(feed.entries or [])[:max_items]:
         items.append({
@@ -292,14 +336,27 @@ def fetch_rss_entries(source: RssSource, max_items: int = 10) -> List[Dict[str, 
             "feed_meta_title": getattr(feed.meta, "title", ""),
             "feed_errors": list(getattr(feed, "errors", []) or []),
         })
+    if not items and getattr(feed, "errors", None):
+        error_type = classify_fetch_errors(getattr(feed, "errors", []), backend=config.feed_backend) or "empty_feed"
+        raise RssFetchError(
+            f"RSS feed returned no usable entries for {source.id}: {'; '.join(_normalize_errors(getattr(feed, 'errors', [])))}",
+            error_type=error_type,
+        )
     return items
 
 
 def extract_article(source: RssSource, entry: Dict[str, Any]) -> Dict[str, Any]:
     config = get_adapter(source)
     article_fetcher = _import_fetcher(config.article_backend)
-    result = article_fetcher(entry["url"], timeout_ms=20000, proxy=None, format="lxml", headless=True)
+    timeout_ms = (
+        settings.rss_browser_timeout_ms
+        if config.article_backend in {"raw", "rendered"}
+        else settings.rss_request_timeout_seconds * 1000
+    )
+    result = article_fetcher(entry["url"], timeout_ms=timeout_ms, proxy=None, format="lxml", headless=True)
     html = result.get("content", "") or ""
+    result_errors = _normalize_errors(result.get("errors", []))
+    scrape_error_type = classify_fetch_errors(result_errors, backend=config.article_backend)
     extracted = html_content_converter(
         html,
         selectors=config.selectors,
@@ -309,6 +366,12 @@ def extract_article(source: RssSource, entry: Dict[str, Any]) -> Dict[str, Any]:
     cleaned_text = clean_article_text(extracted or entry.get("description", ""), config)
     if not cleaned_text:
         cleaned_text = (entry.get("description") or "").strip()
+    content_quality = "full" if html and len(cleaned_text) >= 120 else "rss_summary_only"
+    if not cleaned_text:
+        raise RssFetchError(
+            f"RSS article skipped for {source.id}: no extractable content from {entry.get('url', '')}",
+            error_type=scrape_error_type or "empty_feed",
+        )
     image_meta = _extract_cover_image(html, entry.get("url", ""), entry.get("media"))
     return {
         "title": entry.get("title") or source.feed_name,
@@ -322,7 +385,9 @@ def extract_article(source: RssSource, entry: Dict[str, Any]) -> Dict[str, Any]:
         "image_fallback_type": image_meta.get("fallback_type", ""),
         "source_logo_url": image_meta.get("source_logo_url", ""),
         "published_at": entry.get("published_at"),
-        "errors": list(result.get("errors", []) or []) + list(entry.get("feed_errors", []) or []),
+        "errors": result_errors + list(entry.get("feed_errors", []) or []),
+        "content_quality": content_quality,
+        "scrape_error_type": scrape_error_type,
         "feed_name": source.feed_name,
         "feed_url": source.feed_url,
         "source_id": source.id,
@@ -335,4 +400,15 @@ def extract_article(source: RssSource, entry: Dict[str, Any]) -> Dict[str, Any]:
         "adapter_id": source.adapter_id,
     }
 
-__all__ = ["AdapterConfig", "DEFAULT_ADAPTER", "ADAPTERS", "get_adapter", "resolve_adapter_for_url", "clean_article_text", "fetch_rss_entries", "extract_article"]
+__all__ = [
+    "AdapterConfig",
+    "DEFAULT_ADAPTER",
+    "ADAPTERS",
+    "RssFetchError",
+    "classify_fetch_errors",
+    "get_adapter",
+    "resolve_adapter_for_url",
+    "clean_article_text",
+    "fetch_rss_entries",
+    "extract_article",
+]

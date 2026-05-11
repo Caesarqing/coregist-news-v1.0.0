@@ -1,6 +1,7 @@
 const Notification = require('../models/Notification');
 const UserPushToken = require('../models/UserPushToken');
 const { authRequired } = require('../../shared/node/auth');
+const mongoose = require('mongoose');
 
 function serializeNotification(doc) {
   const raw = doc && typeof doc.toObject === 'function' ? doc.toObject() : (doc || {});
@@ -52,6 +53,43 @@ async function unreadCount(req, res) {
   } catch (error) {
     console.error('❌ 获取未读通知数失败:', error);
     return res.status(500).json({ error: '获取未读通知数失败', details: error.message });
+  }
+}
+
+function serializePushBatch(doc) {
+  const matchedNewsIds = Array.isArray(doc.matchedNewsIds)
+    ? doc.matchedNewsIds.filter(Boolean).map((item) => item.toString())
+    : [];
+  return {
+    batchId: doc.batchId || '',
+    pushSettingId: doc.pushSettingId || '',
+    keywords: Array.isArray(doc.keywords) ? doc.keywords : [],
+    pushCount: Number(doc.pushCount) || 0,
+    matchedCount: matchedNewsIds.length || Number(doc.matchedCount) || 0,
+    matchedNewsIds,
+    status: doc.status || '',
+    scheduledFor: doc.scheduledFor ? new Date(doc.scheduledFor).toISOString() : '',
+    notificationId: doc.notificationId ? doc.notificationId.toString() : '',
+    notificationQueuedAt: doc.notificationQueuedAt ? new Date(doc.notificationQueuedAt).toISOString() : '',
+    searchJobId: doc.searchJobId || '',
+    lastError: doc.lastError || '',
+    updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : '',
+    createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : '',
+  };
+}
+
+async function listPushBatches(req, res) {
+  try {
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const rows = await mongoose.connection.collection('push_batches')
+      .find({ userId: req.userId })
+      .sort({ scheduledFor: -1, createdAt: -1 })
+      .limit(limit)
+      .toArray();
+    return res.json({ items: rows.map(serializePushBatch), limit });
+  } catch (error) {
+    console.error('❌ 获取推送批次失败:', error);
+    return res.status(500).json({ error: '获取推送批次失败', details: error.message });
   }
 }
 
@@ -111,6 +149,7 @@ async function registerPushToken(req, res) {
 
 module.exports = {
   authRequired,
+  listPushBatches,
   listNotifications,
   markAllRead,
   markRead,

@@ -314,6 +314,23 @@ export interface NotificationListResponse {
   limit: number;
 }
 
+export interface PushBatchStatus {
+  batchId: string;
+  pushSettingId: string;
+  keywords: string[];
+  pushCount: number;
+  matchedCount: number;
+  matchedNewsIds: string[];
+  status: string;
+  scheduledFor: string;
+  notificationId: string;
+  notificationQueuedAt: string;
+  searchJobId: string;
+  lastError: string;
+  updatedAt: string;
+  createdAt: string;
+}
+
 // 用户认证API
 function persistAuthTokens(tokenData: Partial<AuthResult>) {
   const accessToken = tokenData.token || tokenData.access_token;
@@ -484,6 +501,10 @@ export const notificationApi = {
 
   async unreadCount(): Promise<{ count: number }> {
     return apiClient.get<{ count: number }>(API_PATHS.notifications.unreadCount);
+  },
+
+  async pushBatches(limit = 20): Promise<{ items: PushBatchStatus[]; limit: number }> {
+    return apiClient.get<{ items: PushBatchStatus[]; limit: number }>(`${API_PATHS.notifications.pushBatches}?limit=${limit}`);
   },
 
   async markRead(id: string): Promise<{ ok: boolean; item: AppNotification }> {
