@@ -97,9 +97,13 @@ class LLMProvider:
         raw_provider = (model_name or os.getenv("LLM_PROVIDER") or "").strip().lower()
         if raw_provider in {"anthropic", "claude"}:
             return (
-                os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").strip(),
-                os.getenv("ANTHROPIC_API_KEY", "").strip(),
-                os.getenv("ANTHROPIC_MODEL", "").strip(),
+                (
+                    os.getenv("ANTHROPIC_BASE_URL")
+                    or os.getenv("LLM_BASE_URL")
+                    or "https://api.anthropic.com"
+                ).strip(),
+                (os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY") or "").strip(),
+                (os.getenv("ANTHROPIC_MODEL") or os.getenv("LLM_MODEL") or "").strip(),
             )
         return (
             os.getenv("LLM_BASE_URL", "").strip(),

@@ -423,13 +423,15 @@ class ContentProcessingService:
 
     def _classify_content(self, *, payload: dict, title: str, normalized: str, language_profile: dict) -> dict:
         candidates = self._build_rule_candidates(payload=payload, title=title, normalized=normalized)
-        model_result = self._classify_with_model(
-            payload=payload,
-            title=title,
-            normalized=normalized,
-            language_profile=language_profile,
-            candidates=candidates,
-        )
+        model_result = None
+        if settings.content_classification_llm_enabled:
+            model_result = self._classify_with_model(
+                payload=payload,
+                title=title,
+                normalized=normalized,
+                language_profile=language_profile,
+                candidates=candidates,
+            )
         if model_result and model_result["classification_confidence"] >= MODEL_CONFIDENCE_THRESHOLD:
             classification = {
                 **model_result,

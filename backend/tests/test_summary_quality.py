@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from services.ai_analysis.service import AIAnalysisService
 from services.news_scraper.service import NewsScraperService
@@ -51,6 +52,22 @@ class SummaryQualityTest(unittest.TestCase):
         ]
         for raw, expected in cases:
             self.assertEqual(LLMProvider._extract_json_object(raw), expected)
+
+    def test_anthropic_provider_accepts_generic_llm_env(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "LLM_PROVIDER": "anthropic",
+                "LLM_BASE_URL": "https://example.test",
+                "LLM_API_KEY": "generic-key",
+                "LLM_MODEL": "claude-test",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                LLMProvider._provider_env("anthropic"),
+                ("https://example.test", "generic-key", "claude-test"),
+            )
 
     def test_review_bundle_omits_scoring_fields(self):
         service = AIAnalysisService()

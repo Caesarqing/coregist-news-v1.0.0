@@ -87,6 +87,7 @@ class ServiceSettings:
     ai_content_char_limit: int = int(os.getenv("AI_CONTENT_CHAR_LIMIT", "4500"))
     ai_content_temperature: float = float(os.getenv("AI_CONTENT_TEMPERATURE", "0"))
     ai_content_json_mode: bool = bool_from_env("AI_CONTENT_JSON_MODE", llm_json_mode)
+    content_classification_llm_enabled: bool = bool_from_env("CONTENT_CLASSIFICATION_LLM_ENABLED", False)
     ai_review_model: str = os.getenv("AI_REVIEW_MODEL", llm_provider)
     ai_review_remote_model: str = os.getenv("AI_REVIEW_LLM_MODEL", llm_model)
     ai_review_base_url: str = os.getenv("AI_REVIEW_BASE_URL", llm_base_url)
