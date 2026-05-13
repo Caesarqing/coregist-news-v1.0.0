@@ -652,6 +652,10 @@ class NewsScraperService:
         return classify_fetch_errors([str(error or "")]) or "request_error"
 
     @staticmethod
+    def _is_http_limited_error_type(error_type: str) -> bool:
+        return error_type in {"http_403", "http_429"}
+
+    @staticmethod
     def _rss_error_policy(error_type: str) -> dict:
         if error_type in {"http_403", "http_429", "ssl_error"}:
             return {
@@ -954,6 +958,7 @@ class NewsScraperService:
                 if should_rotate:
                     self._mark_rss_source_attempt(source)
                 source_succeeded = False
+                source_limited_by_article = False
                 try:
                     entries = fetch_rss_entries(source, max_items=max_items)
                     source_succeeded = True
@@ -966,6 +971,19 @@ class NewsScraperService:
                             article = extract_article(source, entry)
                         except RssFetchError as exc:
                             run_stats["skipped_articles"] += 1
+                            if self._is_http_limited_error_type(exc.error_type):
+                                source_limited_by_article = True
+                                run_stats["failed_sources"] += 1
+                                logger.warning(
+                                    "rss source limited by article fetch source=%s url=%s error_type=%s error=%s; skipping remaining source items",
+                                    source.id,
+                                    url,
+                                    exc.error_type,
+                                    exc,
+                                )
+                                if should_rotate:
+                                    self._mark_rss_source_error(source, exc)
+                                break
                             logger.warning(
                                 "rss article skipped source=%s url=%s error_type=%s error=%s",
                                 source.id,
@@ -984,6 +1002,22 @@ class NewsScraperService:
                                 exc,
                             )
                             continue
+                        scrape_error_type = article.get("scrape_error_type", "")
+                        if self._is_http_limited_error_type(scrape_error_type):
+                            source_limited_by_article = True
+                            run_stats["failed_sources"] += 1
+                            logger.warning(
+                                "rss source limited by article fetch source=%s url=%s error_type=%s; skipping remaining source items",
+                                source.id,
+                                url,
+                                scrape_error_type,
+                            )
+                            if should_rotate:
+                                self._mark_rss_source_error(source, RssFetchError(
+                                    f"RSS article fetch limited for {source.id}: {scrape_error_type}",
+                                    error_type=scrape_error_type,
+                                ))
+                            break
                         if not self._is_ingestable_posted_at(article.get("published_at")):
                             logger.info(
                                 "rss skipped stale article source=%s title=%s published_at=%s",
@@ -1045,9 +1079,9 @@ class NewsScraperService:
                     if should_rotate:
                         self._mark_rss_source_error(source, exc)
                     continue
-                if should_rotate and source_succeeded:
+                if should_rotate and source_succeeded and not source_limited_by_article:
                     self._mark_rss_source_success(source)
-                if source_succeeded:
+                if source_succeeded and not source_limited_by_article:
                     run_stats["success_sources"] += 1
             if should_rotate:
                 logger.info(
