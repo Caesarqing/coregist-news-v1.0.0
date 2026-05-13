@@ -34,7 +34,23 @@ class FakePushBatchCollection:
 
 
 class FakeUserMapCollection:
+    def __init__(self):
+        self.updated = None
+
     def update_one(self, *_args, **_kwargs):
+        self.updated = (_args, _kwargs)
+        return None
+
+    def count_documents(self, *_args, **_kwargs):
+        return 1
+
+
+class FakeTrackingTopicCollection:
+    def __init__(self):
+        self.updated = None
+
+    def update_one(self, *_args, **_kwargs):
+        self.updated = (_args, _kwargs)
         return None
 
 
@@ -97,6 +113,40 @@ class PushBatchFlowTest(unittest.TestCase):
         self.assertTrue(batch["notificationQueuedAt"])
         self.assertEqual(len(service.queue.messages), 1)
         self.assertEqual(service.queue.messages[0][1]["news_ids"], [str(news_id)])
+
+    def test_tracking_news_map_writes_topic_id_and_syncs_topic(self):
+        news_id = ObjectId()
+        topic_id = ObjectId()
+        user_map_collection = FakeUserMapCollection()
+        topic_collection = FakeTrackingTopicCollection()
+
+        @contextmanager
+        def fake_mongo_collection(name):
+            if name == "user_news_maps":
+                yield user_map_collection
+            elif name == "trackingtopics":
+                yield topic_collection
+            else:
+                raise AssertionError(name)
+
+        service = object.__new__(NewsScraperService)
+        with patch("services.news_scraper.service.mongo_collection", fake_mongo_collection):
+            service._upsert_user_news_map(
+                user_id="user-1",
+                news_object_id=news_id,
+                search_job_id="job-1",
+                query="OpenAI",
+                keywords=["OpenAI"],
+                origin="tracking",
+                tracking_topic_id=str(topic_id),
+            )
+
+        update = user_map_collection.updated[0][1]
+        self.assertEqual(update["$set"]["tracking_topic_id"], str(topic_id))
+        self.assertEqual(update["$set"]["origin"], "tracking")
+        topic_update = topic_collection.updated[0][1]
+        self.assertEqual(topic_update["$set"]["matchedCount"], 1)
+        self.assertEqual(topic_update["$set"]["lastStatus"], "updated")
 
 
 if __name__ == "__main__":

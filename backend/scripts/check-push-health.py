@@ -12,23 +12,28 @@ if str(ROOT) not in sys.path:
 import pika
 from pymongo import MongoClient
 
-from services.shared.python.queue import QUEUE_KEYWORD_SEARCH, QUEUE_NEWS_CRAWL_TRIGGER
+from services.shared.python.queue import ACTIVE_QUEUES, LEGACY_QUEUES
 from services.shared.python.settings import settings
 
 
-def queue_snapshot() -> list[dict]:
+def queue_snapshot(queue_names=ACTIVE_QUEUES) -> list[dict]:
     connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
     try:
         channel = connection.channel()
         rows = []
-        for queue_name in (QUEUE_NEWS_CRAWL_TRIGGER, QUEUE_KEYWORD_SEARCH):
-            declared = channel.queue_declare(queue=queue_name, durable=True, passive=True)
-            rows.append({
-                "queue": queue_name,
-                "messages": declared.method.message_count,
-                "consumers": declared.method.consumer_count,
-                "healthy": declared.method.consumer_count > 0,
-            })
+        for queue_name in queue_names:
+            try:
+                declared = channel.queue_declare(queue=queue_name, durable=True, passive=True)
+                rows.append({
+                    "queue": queue_name,
+                    "messages": declared.method.message_count,
+                    "consumers": declared.method.consumer_count,
+                    "healthy": declared.method.consumer_count > 0,
+                })
+            except Exception as exc:
+                rows.append({"queue": queue_name, "error": str(exc), "healthy": False})
+                if channel.is_closed:
+                    channel = connection.channel()
         return rows
     finally:
         connection.close()
@@ -103,9 +108,42 @@ def rss_health_snapshot() -> dict:
         client.close()
 
 
+def raw_news_snapshot() -> dict:
+    client = MongoClient(settings.mongodb_uri)
+    try:
+        db = client[settings.mongodb_db_name]
+        status_rows = list(db["raw_news"].aggregate([
+            {"$group": {"_id": "$processing_status", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+        ]))
+        latest_news = db["news"].find_one(
+            {},
+            {"title_zh": 1, "title_en": 1, "processed_at": 1, "crawledAt": 1, "postedAt": 1},
+            sort=[("processed_at", -1), ("crawledAt", -1), ("postedAt", -1)],
+        )
+        return {
+            "rawStatus": status_rows,
+            "latestNews": latest_news,
+        }
+    finally:
+        client.close()
+
+
+def llm_snapshot() -> dict:
+    return {
+        "provider": settings.llm_provider,
+        "baseUrlPresent": bool(settings.llm_base_url),
+        "apiKeyPresent": bool(settings.llm_api_key),
+        "model": settings.llm_model,
+    }
+
+
 if __name__ == "__main__":
     print(json.dumps({
-        "queues": queue_snapshot(),
+        "queues": queue_snapshot(ACTIVE_QUEUES),
+        "legacyQueues": queue_snapshot(LEGACY_QUEUES),
+        "rawNews": raw_news_snapshot(),
+        "llm": llm_snapshot(),
         "recentPushBatches": batch_snapshot(),
         "rssHealth": rss_health_snapshot(),
     }, ensure_ascii=False, default=str, indent=2))

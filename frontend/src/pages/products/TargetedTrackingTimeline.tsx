@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '~/shared/ui/button';
 import { Card, CardContent } from '~/shared/ui/card';
-import { ArrowLeft, Clock3, Loader2, Target } from 'lucide-react';
+import { ArrowLeft, Clock3, Loader2, RefreshCw, Target } from 'lucide-react';
 import { PageHero } from '~/shared/components/PageHero';
 import { useLanguage } from '~/contexts/LanguageContext';
-import { trackingApi, type TrackingNewsItem } from '~/api/apiClient';
+import { trackingApi, type TrackingNewsItem, type TrackingTopic } from '~/api/apiClient';
 
 type RelatedNewsItem = TrackingNewsItem;
 
@@ -13,6 +13,7 @@ interface TimelineState {
   topicId?: string;
   topicName?: string;
   keywords?: string[];
+  topic?: TrackingTopic;
   news?: RelatedNewsItem[];
 }
 
@@ -29,19 +30,31 @@ export function TargetedTrackingTimelinePage() {
   );
   const [keywords, setKeywords] = useState<string[]>(timelineState.keywords || []);
   const [news, setNews] = useState<RelatedNewsItem[]>(timelineState.news || []);
+  const [topic, setTopic] = useState<TrackingTopic | null>(timelineState.topic || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  const loadNews = async () => {
+    if (!topicId) return;
+    const result = await trackingApi.getTopicNews(topicId, 100, language);
+    setTopic(result.topic || null);
+    setTopicName(result.topic?.name || (isZh ? '追踪主题' : 'Tracking Topic'));
+    setKeywords(result.topic?.keywords || []);
+    setNews(result.items || []);
+  };
 
   useEffect(() => {
     let mounted = true;
     if (!topicId) return;
 
-    const loadNews = async () => {
+    const load = async () => {
       try {
         setIsLoading(true);
         setError('');
         const result = await trackingApi.getTopicNews(topicId, 100, language);
         if (!mounted) return;
+        setTopic(result.topic || null);
         setTopicName(result.topic?.name || (isZh ? '追踪主题' : 'Tracking Topic'));
         setKeywords(result.topic?.keywords || []);
         setNews(result.items || []);
@@ -55,11 +68,42 @@ export function TargetedTrackingTimelinePage() {
       }
     };
 
-    loadNews();
+    load();
     return () => {
       mounted = false;
     };
   }, [topicId, isZh, language]);
+
+  const handleRunTopic = async () => {
+    if (!topicId) return;
+    setIsRefreshing(true);
+    setError('');
+    try {
+      const result = await trackingApi.runTopic(topicId);
+      setTopic(result.topic || null);
+      await loadNews();
+    } catch (err: any) {
+      setError(err?.message || (isZh ? '重新追踪失败' : 'Failed to refresh tracking'));
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const emptyText = () => {
+    if (!topic?.lastRunAt) {
+      return isZh ? '正在准备首次追踪。' : 'Preparing the first tracking run.';
+    }
+    if (topic.status === 'processing') {
+      return isZh ? '正在搜索和分析相关新闻。' : 'Searching and analyzing related news.';
+    }
+    if (topic.status === 'backlogged') {
+      return isZh ? '队列积压，本轮追踪已延后。' : 'Queue is backlogged. This run was deferred.';
+    }
+    if (topic.status === 'failed') {
+      return topic.lastError || (isZh ? '追踪失败，请稍后重试。' : 'Tracking failed. Retry later.');
+    }
+    return isZh ? '本次暂无匹配新闻。' : 'No matching news for this run.';
+  };
 
   const sortedNews = useMemo(
     () =>
@@ -86,6 +130,16 @@ export function TargetedTrackingTimelinePage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           {t('back')}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRunTopic}
+          disabled={isRefreshing}
+          className="ml-2"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isZh ? '重新追踪' : 'Refresh'}
+        </Button>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-4">
@@ -102,6 +156,11 @@ export function TargetedTrackingTimelinePage() {
                 </span>
               ))}
             </div>
+            {topic && (
+              <p className="text-sm text-gray-500 dark:text-slate-400">
+                {isZh ? '状态' : 'Status'}: {topic.status || 'waiting'} · {isZh ? '命中' : 'Matched'} {topic.newsCount || 0}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -139,7 +198,7 @@ export function TargetedTrackingTimelinePage() {
         ) : (
           <Card className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
             <CardContent className="p-10 text-center text-gray-500 dark:text-slate-400">
-              {isZh ? '暂无相关新闻，请先从追踪列表点击主题进入。' : 'No related news yet. Open from tracking list.'}
+              {emptyText()}
             </CardContent>
           </Card>
         )}

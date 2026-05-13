@@ -24,6 +24,23 @@ QUEUE_NEWS_EVALUATED = "news_evaluated_queue"
 QUEUE_NEWS_FINAL = "news_final_queue"
 QUEUE_NEWS_NOTIFICATIONS = "news_notifications_queue"
 
+ACTIVE_QUEUES = (
+    QUEUE_NEWS_CRAWL_TRIGGER,
+    QUEUE_KEYWORD_SEARCH,
+    QUEUE_NEWS_RAW,
+    QUEUE_NEWS_READY,
+    QUEUE_AI_TASKS,
+    QUEUE_NEWS_NOTIFICATIONS,
+)
+
+LEGACY_QUEUES = (
+    QUEUE_NEWS_PROCESSED,
+    QUEUE_NEWS_SUMMARIZED,
+    QUEUE_NEWS_BIAS,
+    QUEUE_NEWS_EVALUATED,
+    QUEUE_NEWS_FINAL,
+)
+
 
 class QueueClient:
     def __init__(self, rabbitmq_url: str | None = None) -> None:
@@ -44,23 +61,14 @@ class QueueClient:
         parameters = self._connection_parameters()
         self._connection = pika.BlockingConnection(parameters)
         self._channel = self._connection.channel()
-        for queue_name in (
-            QUEUE_NEWS_CRAWL_TRIGGER,
-            QUEUE_KEYWORD_SEARCH,
-            QUEUE_NEWS_RAW,
-            QUEUE_NEWS_PROCESSED,
-            QUEUE_NEWS_READY,
-            QUEUE_AI_TASKS,
-            QUEUE_NEWS_SUMMARIZED,
-            QUEUE_NEWS_BIAS,
-            QUEUE_NEWS_EVALUATED,
-            QUEUE_NEWS_FINAL,
-            QUEUE_NEWS_NOTIFICATIONS,
-        ):
+        for queue_name in ACTIVE_QUEUES:
             self._channel.queue_declare(queue=queue_name, durable=True)
         return self._channel
 
     def publish(self, queue_name: str, payload: dict[str, Any]) -> None:
+        if queue_name in LEGACY_QUEUES:
+            logger.info("Skipping publish to legacy queue=%s", queue_name)
+            return
         parameters = self._connection_parameters()
         last_error: Exception | None = None
         for attempt in range(1, 4):
@@ -68,7 +76,8 @@ class QueueClient:
             try:
                 connection = pika.BlockingConnection(parameters)
                 channel = connection.channel()
-                channel.queue_declare(queue=queue_name, durable=True)
+                if queue_name in ACTIVE_QUEUES:
+                    channel.queue_declare(queue=queue_name, durable=True)
                 channel.basic_publish(
                     exchange="",
                     routing_key=queue_name,
@@ -174,6 +183,8 @@ __all__ = [
     "QUEUE_NEWS_READY",
     "QUEUE_AI_TASKS",
     "QUEUE_NEWS_SUMMARIZED",
+    "ACTIVE_QUEUES",
+    "LEGACY_QUEUES",
     "QueueClient",
     "mongo_collection",
 ]

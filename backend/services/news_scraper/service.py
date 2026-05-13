@@ -5,6 +5,8 @@ import logging
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from bson import ObjectId
+
 from services.shared.python.agent_runtime import build_default_agent_registry, build_default_skillset
 from services.shared.python.news_identity import build_news_identity, build_news_lookup_query
 from services.shared.python.queue import (
@@ -77,9 +79,11 @@ class NewsScraperService:
         query: str,
         keywords: list[str],
         origin: str = "search",
+        tracking_topic_id: str = "",
     ) -> None:
         if not user_id or not news_object_id:
             return
+        tracking_topic_id = str(tracking_topic_id or "")
         with mongo_collection("user_news_maps") as collection:
             collection.update_one(
                 {"userId": user_id, "newsId": news_object_id},
@@ -89,6 +93,7 @@ class NewsScraperService:
                         "query": query,
                         "keywords": keywords,
                         "origin": origin,
+                        "tracking_topic_id": tracking_topic_id,
                         "visible": True,
                         "updatedAt": datetime.utcnow(),
                     },
@@ -100,6 +105,29 @@ class NewsScraperService:
                 },
                 upsert=True,
             )
+        if tracking_topic_id:
+            self._sync_tracking_topic(tracking_topic_id=tracking_topic_id, user_id=user_id)
+
+    def _sync_tracking_topic(self, *, tracking_topic_id: str, user_id: str = "", error: str = "") -> None:
+        if not tracking_topic_id:
+            return
+        try:
+            topic_object_id = ObjectId(tracking_topic_id)
+        except Exception:
+            return
+        count_query = {"tracking_topic_id": tracking_topic_id, "visible": True}
+        if user_id:
+            count_query["userId"] = user_id
+        with mongo_collection("user_news_maps") as map_collection:
+            matched_count = map_collection.count_documents(count_query)
+        update = {
+            "matchedCount": matched_count,
+            "lastStatus": "failed" if error else "updated",
+            "lastError": error[:500] if error else "",
+            "updatedAt": datetime.utcnow(),
+        }
+        with mongo_collection("trackingtopics") as topic_collection:
+            topic_collection.update_one({"_id": topic_object_id}, {"$set": update})
 
     @staticmethod
     def _normalize_push_count(value) -> int:
@@ -241,6 +269,7 @@ class NewsScraperService:
                 "keyword": (payload.get("keywords") or [""])[0] if payload.get("keywords") else "",
                 "source_type": payload.get("source_type", "search_query"),
                 "topic_name": payload.get("topic_name", ""),
+                "tracking_topic_id": payload.get("tracking_topic_id", ""),
                 "title": result.get("title") or payload.get("query") or "",
                 "url": result.get("url") or "",
                 "canonical_link": identity.get("canonical_link", ""),
@@ -406,6 +435,8 @@ class NewsScraperService:
                             search_job_id=job_id,
                             query=query,
                             keywords=keyword_payload.get("keywords", []),
+                            origin="tracking" if keyword_payload.get("source_type") == "tracking_topic" else "search",
+                            tracking_topic_id=keyword_payload.get("tracking_topic_id", ""),
                         )
                         self._add_news_to_push_batch(
                             batch_id=keyword_payload.get("push_batch_id", ""),
@@ -480,6 +511,7 @@ class NewsScraperService:
                         "keywords": keyword_payload.get("keywords", []),
                         "source_type": keyword_payload.get("source_type", "search_query"),
                         "topic_name": keyword_payload.get("topic_name", ""),
+                        "tracking_topic_id": keyword_payload.get("tracking_topic_id", ""),
                         "push_batch_id": keyword_payload.get("push_batch_id", ""),
                         "push_count": keyword_payload.get("push_count"),
                         "scrape_backend": scraped.get("backend", ""),
@@ -500,6 +532,11 @@ class NewsScraperService:
                 "enrichment_attempted_count": enrichment_attempted_count,
                 "queued_for_ai_count": len(payloads),
             })
+            if keyword_payload.get("source_type") == "tracking_topic" and not payloads:
+                self._sync_tracking_topic(
+                    tracking_topic_id=keyword_payload.get("tracking_topic_id", ""),
+                    user_id=keyword_payload.get("user_id", ""),
+                )
             logger.info(
                 "keyword search finished job=%s query=%s discovered=%s existing=%s queued=%s enrichment_failed=%s",
                 job_id,
@@ -523,14 +560,66 @@ class NewsScraperService:
                 "queued_for_ai_count": len(payloads),
             })
             self._finish_push_batch_after_search(keyword_payload, queued_for_ai_count=0)
+            if keyword_payload.get("source_type") == "tracking_topic":
+                self._sync_tracking_topic(
+                    tracking_topic_id=keyword_payload.get("tracking_topic_id", ""),
+                    user_id=keyword_payload.get("user_id", ""),
+                    error=str(exc),
+                )
             return []
 
     def publish_raw_payloads(self, payloads: list[dict]) -> int:
         count = 0
         for payload in payloads:
-            self.queue.publish(QUEUE_NEWS_RAW, payload)
-            count += 1
+            count += self.publish_raw_payload(payload)
         return count
+
+    def publish_raw_payload(self, payload: dict) -> int:
+        if not self._acquire_ingestion_lock(payload):
+            logger.info("raw payload skipped by ingestion lock url=%s title=%s", payload.get("url"), payload.get("title"))
+            return 0
+        self.queue.publish(QUEUE_NEWS_RAW, payload)
+        return 1
+
+    @staticmethod
+    def _ingestion_lock_key(payload: dict) -> str:
+        canonical_link = (payload.get("canonical_link") or "").strip()
+        if canonical_link:
+            return f"canonical:{canonical_link}"
+        source_id = (payload.get("source_id") or payload.get("publisher_id") or "").strip()
+        title_hash = (payload.get("title_hash") or "").strip()
+        if source_id and title_hash:
+            return f"title:{source_id}:{title_hash}"
+        url = (payload.get("url") or "").strip()
+        return f"url:{url}" if url else ""
+
+    def _acquire_ingestion_lock(self, payload: dict, *, now: datetime | None = None) -> bool:
+        lock_key = self._ingestion_lock_key(payload)
+        if not lock_key:
+            return True
+        current = now or datetime.utcnow()
+        expires_at = current + timedelta(hours=max(1, settings.news_ingestion_lock_hours))
+        with mongo_collection("news_ingestion_locks") as collection:
+            existing = collection.find_one({"_id": lock_key}, {"expires_at": 1})
+            existing_expires_at = self._coerce_datetime((existing or {}).get("expires_at"))
+            if existing_expires_at and existing_expires_at > current:
+                return False
+            collection.update_one(
+                {"_id": lock_key},
+                {
+                    "$set": {
+                        "expires_at": expires_at,
+                        "updatedAt": current,
+                        "canonical_link": payload.get("canonical_link", ""),
+                        "source_id": payload.get("source_id") or payload.get("publisher_id") or "",
+                        "title_hash": payload.get("title_hash", ""),
+                        "url": payload.get("url", ""),
+                    },
+                    "$setOnInsert": {"createdAt": current},
+                },
+                upsert=True,
+            )
+        return True
 
     def _resolve_feed_limit(self, limit_per_feed: int | None) -> int:
         requested = int(limit_per_feed) if limit_per_feed else settings.rss_max_items_per_feed
@@ -986,7 +1075,7 @@ class NewsScraperService:
             limit_per_feed=limit_per_feed,
             source_limit=source_limit,
             rotate_sources=rotate_sources,
-            on_item=(lambda payload: self.queue.publish(QUEUE_NEWS_RAW, payload)) if publish else None,
+            on_item=(lambda payload: self.publish_raw_payload(payload)) if publish else None,
         )
         return payloads
 

@@ -4,6 +4,15 @@ export interface TrackingTopic {
   keywords: string[];
   urls: string[];
   newsCount: number;
+  candidateCount: number;
+  enabled: boolean;
+  frequencyMinutes: number;
+  lastRunAt: string;
+  nextRunAt: string;
+  lastJobId: string;
+  lastError: string;
+  matchedCount: number;
+  status: 'waiting' | 'processing' | 'updated' | 'failed' | 'backlogged' | string;
   createdAt: string;
 }
 
@@ -11,6 +20,8 @@ export interface CreateTrackingTopicRequest {
   name: string;
   keywords: string[];
   urls: string[];
+  frequencyMinutes?: number;
+  enabled?: boolean;
 }
 
 export interface TrackingNewsItem {
@@ -30,6 +41,18 @@ export interface TrackingTopicNewsResponse {
   topic: TrackingTopic;
   items: TrackingNewsItem[];
   total: number;
+  source?: 'mapped' | 'fallback' | string;
+}
+
+export interface TrackingTopicStatusResponse {
+  topic: TrackingTopic;
+  job: {
+    jobId: string;
+    status: string;
+    error: string;
+    triggeredAt: string;
+    updatedAt: string;
+  } | null;
 }
 
 export interface TrackingAnalyticsData {

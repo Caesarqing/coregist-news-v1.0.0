@@ -13,6 +13,9 @@ const userSearchJobSchema = new mongoose.Schema({
   },
   allow_discovery: { type: Boolean, default: true },
   source_type: { type: String, default: 'search_query' },
+  tracking_topic_id: { type: String, default: '', index: true },
+  topic_name: { type: String, default: '' },
+  remaining_count: { type: Number, default: null },
   status: {
     type: String,
     enum: ['queued', 'processing', 'completed', 'failed'],

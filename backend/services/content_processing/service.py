@@ -8,6 +8,7 @@ from datetime import datetime
 from pipeline.llm.news_category_prompt import NEWS_CATEGORY_SCHEMA, build_taxonomy_text
 from services.shared.python.agent_runtime import build_default_agent_registry, build_default_skillset
 from services.shared.python.llm import LLMProvider
+from services.shared.python.news_identity import build_news_lookup_query
 from services.shared.python.queue import QUEUE_NEWS_RAW, QUEUE_NEWS_READY, QueueClient, mongo_collection
 from services.shared.python.repositories.raw_news_repository import RawNewsRepository
 from services.shared.python.settings import settings
@@ -574,6 +575,21 @@ class ContentProcessingService:
         return "quality:failed"
 
     def process_news(self, payload: dict, *, publish: bool = True) -> dict:
+        existing_news = self._find_existing_news(payload)
+        if existing_news:
+            raw_doc = {
+                **payload,
+                "processing_status": "duplicate_completed",
+                "duplicate_news_id": str(existing_news.get("_id")),
+                "processed_at": datetime.utcnow().isoformat(),
+            }
+            news_id = self.raw_news_repo.upsert(raw_doc)
+            self.status_tracker.update_status(news_id, {
+                "status": "completed",
+                "stage": "duplicate_completed",
+            })
+            return {"news_id": news_id, "status": "duplicate_completed", "duplicate_news_id": str(existing_news.get("_id"))}
+
         cleaned = self.skillset.get_skill("text_cleaner").execute(text=payload.get("raw_content", ""))
         cleaned = self._strip_structural_noise(cleaned)
         normalized = self._normalize_content(cleaned)
@@ -653,6 +669,9 @@ class ContentProcessingService:
             "discovery_id": payload.get("discovery_id", ""),
             "user_id": payload.get("user_id", ""),
             "keywords": payload.get("keywords", []),
+            "source_type": payload.get("source_type", ""),
+            "tracking_topic_id": payload.get("tracking_topic_id", ""),
+            "topic_name": payload.get("topic_name", ""),
             "push_batch_id": payload.get("push_batch_id", ""),
             "push_count": payload.get("push_count"),
         }
@@ -719,12 +738,28 @@ class ContentProcessingService:
                 "discovery_id": payload.get("discovery_id", ""),
                 "user_id": payload.get("user_id", ""),
                 "keywords": payload.get("keywords", []),
+                "source_type": payload.get("source_type", ""),
+                "tracking_topic_id": payload.get("tracking_topic_id", ""),
+                "topic_name": payload.get("topic_name", ""),
                 "push_batch_id": payload.get("push_batch_id", ""),
                 "push_count": payload.get("push_count"),
             }
             self.queue.publish(QUEUE_NEWS_READY, processed_payload)
         
         return {"news_id": news_id, "status": "ready"}
+
+    @staticmethod
+    def _find_existing_news(payload: dict) -> dict | None:
+        lookup_query = build_news_lookup_query(
+            link=payload.get("url", ""),
+            canonical_link=payload.get("canonical_link", ""),
+            title_hash=payload.get("title_hash", ""),
+            source_id=payload.get("source_id") or payload.get("publisher_id") or "",
+        )
+        if not lookup_query:
+            return None
+        with mongo_collection("news") as collection:
+            return collection.find_one(lookup_query, {"_id": 1})
 
     def consume(self) -> None:
         self.queue.consume(QUEUE_NEWS_RAW, self.process_news)

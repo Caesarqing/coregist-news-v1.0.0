@@ -4,7 +4,7 @@ import { Card, CardContent } from '~/shared/ui/card';
 import { Button } from '~/shared/ui/button';
 import { Input } from '~/shared/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/shared/ui/tabs';
-import { Target, Trash2, BarChart3, FileText, ArrowLeft, PlusCircle, MinusCircle } from 'lucide-react';
+import { Target, Trash2, BarChart3, FileText, ArrowLeft, PlusCircle, MinusCircle, RefreshCw } from 'lucide-react';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { motion } from 'framer-motion';
 import { PageHero } from '~/shared/components/PageHero';
@@ -28,6 +28,7 @@ export function TargetedTrackingPage() {
   const [newTopicUrls, setNewTopicUrls] = useState<string[]>(['']);
   const [activeTab, setActiveTab] = useState('tracking');
   const [analyticsData, setAnalyticsData] = useState<TrackingAnalyticsData | null>(null);
+  const [runningTopicIds, setRunningTopicIds] = useState<Set<string>>(new Set());
 
   const reloadTrackingData = async () => {
     const [topicsRes, analyticsRes] = await Promise.all([
@@ -126,6 +127,56 @@ export function TargetedTrackingPage() {
     }
   };
 
+  const handleRunTopic = async (topic: TrackingTopic) => {
+    setRunningTopicIds((prev) => new Set(prev).add(topic.id));
+    try {
+      const result = await trackingApi.runTopic(topic.id);
+      setTopics((prev) => prev.map((item) => (item.id === topic.id ? result.topic : item)));
+      await reloadTrackingData();
+    } catch (err: any) {
+      alert(err?.message || (language === 'zh-CN' ? '重新追踪失败' : 'Failed to refresh tracking'));
+    } finally {
+      setRunningTopicIds((prev) => {
+        const next = new Set(prev);
+        next.delete(topic.id);
+        return next;
+      });
+    }
+  };
+
+  const statusLabel = (topic: TrackingTopic) => {
+    const labels: Record<string, string> = language === 'zh-CN'
+      ? {
+          waiting: '等待中',
+          processing: '搜索中',
+          updated: '已更新',
+          failed: '失败',
+          backlogged: '队列积压',
+        }
+      : {
+          waiting: 'Waiting',
+          processing: 'Searching',
+          updated: 'Updated',
+          failed: 'Failed',
+          backlogged: 'Backlogged',
+        };
+    return labels[topic.status || 'waiting'] || labels.waiting;
+  };
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return language === 'zh-CN' ? '尚未运行' : 'Not run yet';
+    try {
+      return new Date(value).toLocaleString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return value;
+    }
+  };
+
   const handleOpenTopicTimeline = async (topic: TrackingTopic) => {
     try {
       const result = await trackingApi.getTopicNews(topic.id, 50);
@@ -134,6 +185,7 @@ export function TargetedTrackingPage() {
           topicId: topic.id,
           topicName: topic.name,
           keywords: topic.keywords,
+          topic,
           news: result.items as TrackingNewsItem[],
         },
       });
@@ -144,6 +196,7 @@ export function TargetedTrackingPage() {
           topicId: topic.id,
           topicName: topic.name,
           keywords: topic.keywords,
+          topic,
           news: [],
         },
       });
@@ -317,6 +370,9 @@ export function TargetedTrackingPage() {
                                 <h4 className="font-bold text-lg text-gray-900 dark:text-slate-100">
                                   {topic.name}
                                 </h4>
+                                <span className="text-xs px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                  {statusLabel(topic)}
+                                </span>
                               </div>
                               <div className="flex flex-wrap gap-2 mb-2">
                                 {topic.keywords.map((keyword) => (
@@ -330,26 +386,48 @@ export function TargetedTrackingPage() {
                               </div>
                               <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-slate-300">
                                 <span>
-                                  {language === 'zh-CN' ? '相关新闻:'  : 'Related news:'}{' '}
+                                  {language === 'zh-CN' ? '真实命中:'  : 'Matched:'}{' '}
                                   <span className="font-bold text-blue-600 dark:text-blue-300">{topic.newsCount}</span>
                                 </span>
                                 <span>
-                                  {language === 'zh-CN' ? '创建于:'  : 'Created:'}{' '}
-                                  {topic.createdAt}
+                                  {language === 'zh-CN' ? '候选:'  : 'Candidates:'}{' '}
+                                  <span className="font-bold text-slate-700 dark:text-slate-200">{topic.candidateCount || 0}</span>
+                                </span>
+                                <span>
+                                  {language === 'zh-CN' ? '上次运行:'  : 'Last run:'}{' '}
+                                  {formatDateTime(topic.lastRunAt)}
                                 </span>
                               </div>
+                              {topic.lastError && (
+                                <p className="mt-2 text-xs text-red-600 dark:text-red-300">
+                                  {topic.lastError}
+                                </p>
+                              )}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveTopic(topic.id);
-                              }}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRunTopic(topic);
+                                }}
+                                disabled={runningTopicIds.has(topic.id)}
+                              >
+                                <RefreshCw className={`w-4 h-4 ${runningTopicIds.has(topic.id) ? 'animate-spin' : ''}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTopic(topic.id);
+                                }}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>

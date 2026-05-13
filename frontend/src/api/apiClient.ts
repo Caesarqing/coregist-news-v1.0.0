@@ -8,6 +8,7 @@ import type {
   NewsItem,
   TrackingAnalyticsData,
   TrackingNewsItem,
+  TrackingTopicStatusResponse,
   TrackingTopic,
   UnifiedSearchFilters,
   UnifiedSearchResponse,
@@ -289,6 +290,7 @@ export type {
   SearchJobSnapshot,
   TrackingAnalyticsData,
   TrackingNewsItem,
+  TrackingTopicStatusResponse,
   TrackingTopic,
   UnifiedSearchResponse,
 };
@@ -594,7 +596,7 @@ export const trackingApi = {
     return apiClient.get<{ items: TrackingTopic[]; total: number }>(API_PATHS.tracking.topics);
   },
 
-  async createTopic(payload: { name: string; keywords: string[]; urls: string[] }): Promise<TrackingTopic> {
+  async createTopic(payload: { name: string; keywords: string[]; urls: string[]; frequencyMinutes?: number; enabled?: boolean }): Promise<TrackingTopic> {
     return apiClient.post<TrackingTopic>(API_PATHS.tracking.topics, payload);
   },
 
@@ -611,6 +613,14 @@ export const trackingApi = {
     return apiClient.get<{ topic: TrackingTopic; items: TrackingNewsItem[]; total: number }>(
       `${API_PATHS.tracking.topicNews(id)}?${params.toString()}`
     );
+  },
+
+  async runTopic(id: string): Promise<{ ok: boolean; jobId: string; topic: TrackingTopic }> {
+    return apiClient.post<{ ok: boolean; jobId: string; topic: TrackingTopic }>(API_PATHS.tracking.topicRun(id));
+  },
+
+  async getTopicStatus(id: string): Promise<TrackingTopicStatusResponse> {
+    return apiClient.get<TrackingTopicStatusResponse>(API_PATHS.tracking.topicStatus(id));
   },
 
   async getAnalytics(): Promise<TrackingAnalyticsData> {

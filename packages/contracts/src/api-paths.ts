@@ -36,6 +36,8 @@ export const API_PATHS = {
     topics: '/tracking/topics',
     topicDetail: (id: string) => `/tracking/topics/${id}`,
     topicNews: (id: string) => `/tracking/topics/${id}/news`,
+    topicRun: (id: string) => `/tracking/topics/${id}/run`,
+    topicStatus: (id: string) => `/tracking/topics/${id}/status`,
     analytics: '/tracking/analytics',
   },
   agent: {

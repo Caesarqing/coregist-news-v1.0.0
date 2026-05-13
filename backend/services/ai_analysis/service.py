@@ -5,16 +5,15 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from bson import ObjectId
+
 from pipeline.llm.news_summary_prompt import build_prompt as build_summary_prompt
 from services.shared.python.agent_runtime import build_default_agent_registry, build_default_skillset
 from services.shared.python.llm import LLMProvider
 from services.shared.python.news_identity import build_news_identity, build_news_lookup_query
 from services.shared.python.queue import (
     QUEUE_AI_TASKS,
-    QUEUE_NEWS_BIAS,
-    QUEUE_NEWS_FINAL,
     QUEUE_NEWS_NOTIFICATIONS,
-    QUEUE_NEWS_SUMMARIZED,
     QueueClient,
     mongo_collection,
 )
@@ -681,6 +680,34 @@ class AIAnalysisService:
                 {"$set": {"status": "ready", "notificationQueuedAt": datetime.utcnow(), "updatedAt": datetime.utcnow()}},
             )
 
+    @staticmethod
+    def _sync_tracking_topic(payload: dict, *, error: str = "") -> None:
+        tracking_topic_id = str(payload.get("tracking_topic_id") or "")
+        user_id = str(payload.get("user_id") or "")
+        if not tracking_topic_id:
+            return
+        try:
+            topic_object_id = ObjectId(tracking_topic_id)
+        except Exception:
+            return
+        count_query = {"tracking_topic_id": tracking_topic_id, "visible": True}
+        if user_id:
+            count_query["userId"] = user_id
+        with mongo_collection("user_news_maps") as map_collection:
+            matched_count = map_collection.count_documents(count_query)
+        with mongo_collection("trackingtopics") as topic_collection:
+            topic_collection.update_one(
+                {"_id": topic_object_id},
+                {
+                    "$set": {
+                        "matchedCount": matched_count,
+                        "lastStatus": "failed" if error else "updated",
+                        "lastError": error[:500] if error else "",
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
+
     def _mark_push_batch_ai_failure(self, payload: dict, error: Exception) -> None:
         batch_id = payload.get("push_batch_id") or ""
         if not batch_id:
@@ -772,10 +799,6 @@ class AIAnalysisService:
                 "review_label": review_bundle.get("review_label", "needs_attention"),
             }
 
-            if publish:
-                self.queue.publish(QUEUE_NEWS_SUMMARIZED, {"news_id": news_id, "summary": metadata})
-                self.queue.publish(QUEUE_NEWS_BIAS, {"news_id": news_id, "bias_analysis": bias})
-
             final_payload = {
                 **payload,
                 "summary": metadata,
@@ -858,6 +881,7 @@ class AIAnalysisService:
                                     if payload.get("source_type") == "tracking_topic"
                                     else ("search" if payload.get("pipeline_mode") == "search" else payload.get("pipeline_mode", "rss"))
                                 ),
+                                "tracking_topic_id": payload.get("tracking_topic_id", ""),
                                 "visible": True,
                                 "updatedAt": datetime.utcnow(),
                             },
@@ -883,15 +907,14 @@ class AIAnalysisService:
                     )
             self._sync_user_search_job(payload.get("search_job_id", ""))
             self._sync_push_batch(payload, stored_news)
+            self._sync_tracking_topic(payload)
 
-            if publish:
-                self.queue.publish(QUEUE_NEWS_FINAL, final_payload)
-                if not payload.get("push_batch_id"):
-                    self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
-                        "user_id": payload.get("user_id", "system"),
-                        "content": f"新闻 {payload.get('title', news_id)} 已完成 AI 分析。",
-                        "news_id": news_id,
-                    })
+            if publish and not payload.get("push_batch_id"):
+                self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+                    "user_id": payload.get("user_id", "system"),
+                    "content": f"新闻 {payload.get('title', news_id)} 已完成 AI 分析。",
+                    "news_id": news_id,
+                })
             return final_payload
         except Exception as error:
             self.raw_news_repo.update_status(news_id, {"processing_status": "failed", "last_error": str(error)})
@@ -908,6 +931,7 @@ class AIAnalysisService:
                     )
             self._sync_user_search_job(payload.get("search_job_id", ""))
             self._mark_push_batch_ai_failure(payload, error)
+            self._sync_tracking_topic(payload, error=str(error))
             return {
                 "news_id": news_id,
                 "status": "failed",

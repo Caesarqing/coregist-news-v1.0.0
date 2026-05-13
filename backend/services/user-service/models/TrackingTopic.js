@@ -22,6 +22,28 @@ const trackingTopicSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    enabled: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    frequencyMinutes: {
+      type: Number,
+      default: 30,
+      min: 15,
+      max: 1440,
+    },
+    lastRunAt: { type: Date, default: null },
+    nextRunAt: { type: Date, default: null, index: true },
+    lastJobId: { type: String, default: '' },
+    lastError: { type: String, default: '' },
+    lastStatus: {
+      type: String,
+      enum: ['waiting', 'processing', 'updated', 'failed', 'backlogged'],
+      default: 'waiting',
+      index: true,
+    },
+    matchedCount: { type: Number, default: 0 },
   },
   {
     timestamps: true,
@@ -29,5 +51,6 @@ const trackingTopicSchema = new mongoose.Schema(
 );
 
 trackingTopicSchema.index({ userId: 1, createdAt: -1 });
+trackingTopicSchema.index({ enabled: 1, nextRunAt: 1 });
 
 module.exports = mongoose.models.TrackingTopic || mongoose.model('TrackingTopic', trackingTopicSchema);

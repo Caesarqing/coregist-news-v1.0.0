@@ -107,12 +107,32 @@ function buildTopicNewsQuery({ keywords = [], urls = [] } = {}) {
 }
 
 function mapTrackingTopic(topic, newsCount = 0) {
+  const lastRunAt = topic.lastRunAt ? new Date(topic.lastRunAt).toISOString() : '';
+  const nextRunAt = topic.nextRunAt ? new Date(topic.nextRunAt).toISOString() : '';
+  const lastError = topic.lastError || '';
+  let status = topic.lastStatus || 'waiting';
+  if (lastError) {
+    status = lastError === 'queue_backlogged' ? 'backlogged' : 'failed';
+  } else if (!topic.lastStatus && topic.lastJobId && !lastRunAt) {
+    status = 'processing';
+  } else if (!topic.lastStatus && lastRunAt) {
+    status = 'updated';
+  }
   return {
     id: topic._id?.toString() || topic.id || '',
     name: topic.name || '',
     keywords: topic.keywords || [],
     urls: topic.urls || [],
     newsCount,
+    candidateCount: topic.candidateCount || 0,
+    enabled: topic.enabled !== false,
+    frequencyMinutes: topic.frequencyMinutes || 30,
+    lastRunAt,
+    nextRunAt,
+    lastJobId: topic.lastJobId || '',
+    lastError,
+    matchedCount: topic.matchedCount || newsCount || 0,
+    status,
     createdAt: topic.createdAt
       ? new Date(topic.createdAt).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0],

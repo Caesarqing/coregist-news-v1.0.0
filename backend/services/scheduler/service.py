@@ -6,11 +6,14 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from bson import ObjectId
+import pika
 
 from services.shared.python.queue import (
+    QUEUE_AI_TASKS,
     QUEUE_KEYWORD_SEARCH,
     QUEUE_NEWS_CRAWL_TRIGGER,
     QUEUE_NEWS_NOTIFICATIONS,
+    QUEUE_NEWS_RAW,
     QueueClient,
     mongo_collection,
 )
@@ -22,7 +25,40 @@ class SchedulerService:
         self.scheduler = BlockingScheduler()
         self.queue = QueueClient()
 
+    @staticmethod
+    def _queue_message_count(queue_name: str) -> int:
+        connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_url))
+        try:
+            channel = connection.channel()
+            declared = channel.queue_declare(queue=queue_name, durable=True, passive=True)
+            return int(declared.method.message_count)
+        finally:
+            connection.close()
+
+    @classmethod
+    def rss_backlog_status(cls) -> dict:
+        raw_messages = cls._queue_message_count(QUEUE_NEWS_RAW)
+        ai_messages = cls._queue_message_count(QUEUE_AI_TASKS)
+        return {
+            "raw_messages": raw_messages,
+            "ai_messages": ai_messages,
+            "raw_limit": settings.news_raw_queue_max_messages,
+            "ai_limit": settings.ai_tasks_queue_max_messages,
+            "backlogged": (
+                raw_messages >= settings.news_raw_queue_max_messages
+                or ai_messages >= settings.ai_tasks_queue_max_messages
+            ),
+        }
+
     def trigger_default_crawl(self) -> None:
+        if settings.rss_skip_when_backlogged:
+            try:
+                backlog = self.rss_backlog_status()
+            except Exception as exc:
+                backlog = {"backlogged": False, "error": str(exc)}
+            if backlog.get("backlogged"):
+                print(f"rss crawl skipped because queues are backlogged: {backlog}")
+                return
         self.queue.publish(QUEUE_NEWS_CRAWL_TRIGGER, {
             "mode": "rss",
             "publish_raw": True,
@@ -63,6 +99,132 @@ class SchedulerService:
         except Exception:
             parsed = 5
         return max(1, min(parsed, 20))
+
+    @staticmethod
+    def _normalize_tracking_frequency(value) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = settings.tracking_default_frequency_minutes
+        return max(settings.tracking_min_frequency_minutes, min(parsed, 1440))
+
+    @staticmethod
+    def _normalize_tracking_remaining_count(value=None) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = settings.tracking_default_remaining_count
+        return max(1, min(parsed, settings.tracking_max_remaining_count))
+
+    def trigger_tracking_topics(self) -> None:
+        now = datetime.utcnow()
+        backlogged = False
+        if settings.rss_skip_when_backlogged:
+            try:
+                backlogged = bool(self.rss_backlog_status().get("backlogged"))
+            except Exception as exc:
+                print(f"tracking backlog check failed: {exc}")
+                backlogged = False
+
+        due_query = {
+            "enabled": {"$ne": False},
+            "$or": [
+                {"nextRunAt": {"$lte": now}},
+                {"nextRunAt": {"$in": [None, ""]}},
+            ],
+        }
+        with mongo_collection("trackingtopics") as topic_collection:
+            topics = list(topic_collection.find(due_query, limit=50))
+
+        if not topics:
+            return
+
+        if backlogged:
+            retry_at = now + timedelta(minutes=max(5, settings.tracking_min_frequency_minutes))
+            with mongo_collection("trackingtopics") as topic_collection:
+                topic_collection.update_many(
+                    {"_id": {"$in": [topic["_id"] for topic in topics]}},
+                    {
+                        "$set": {
+                            "lastError": "queue_backlogged",
+                            "lastStatus": "backlogged",
+                            "nextRunAt": retry_at,
+                            "updatedAt": now,
+                        },
+                    },
+                )
+            print(f"tracking topics skipped because queues are backlogged: {len(topics)}")
+            return
+
+        for topic in topics:
+            user_id = str(topic.get("userId") or "")
+            topic_id = str(topic.get("_id") or "")
+            keywords = [str(item).strip() for item in topic.get("keywords", []) if str(item).strip()]
+            query = " ".join(keywords) or str(topic.get("name") or "").strip()
+            if not user_id or not topic_id or not query:
+                continue
+
+            frequency = self._normalize_tracking_frequency(topic.get("frequencyMinutes"))
+            remaining_count = self._normalize_tracking_remaining_count()
+            run_key = now.strftime("%Y%m%d%H%M")
+            job_id = f"tracking:{user_id}:{topic_id}:{run_key}"
+            next_run_at = now + timedelta(minutes=frequency)
+
+            with mongo_collection("user_search_jobs") as job_collection:
+                result = job_collection.update_one(
+                    {"job_id": job_id},
+                    {
+                        "$set": {
+                            "status": "queued",
+                            "updatedAt": now,
+                            "triggered_at": now,
+                            "mode": "ai",
+                            "query": query,
+                            "keywords": keywords,
+                            "filters": {"category": [], "source": [], "time_range": ""},
+                            "allow_discovery": True,
+                            "source_type": "tracking_topic",
+                            "tracking_topic_id": topic_id,
+                            "topic_name": topic.get("name", ""),
+                            "remaining_count": remaining_count,
+                        },
+                        "$setOnInsert": {
+                            "job_id": job_id,
+                            "userId": user_id,
+                            "createdAt": now,
+                        },
+                    },
+                    upsert=True,
+                )
+            if not result.upserted_id and topic.get("lastJobId") == job_id:
+                continue
+
+            self.queue.publish(QUEUE_KEYWORD_SEARCH, {
+                "job_id": job_id,
+                "user_id": user_id,
+                "mode": "ai",
+                "query": query,
+                "keywords": keywords,
+                "filters": {},
+                "source_type": "tracking_topic",
+                "tracking_topic_id": topic_id,
+                "topic_name": topic.get("name", ""),
+                "remaining_count": remaining_count,
+            })
+            with mongo_collection("trackingtopics") as topic_collection:
+                topic_collection.update_one(
+                    {"_id": topic["_id"]},
+                    {
+                        "$set": {
+                            "lastJobId": job_id,
+                            "lastRunAt": now,
+                            "nextRunAt": next_run_at,
+                            "lastError": "",
+                            "lastStatus": "processing",
+                            "updatedAt": now,
+                        },
+                    },
+                )
 
     @staticmethod
     def _news_keyword_query(keywords: list[str], since: datetime) -> dict:
@@ -348,6 +510,16 @@ class SchedulerService:
             coalesce=True,
             max_instances=1,
             misfire_grace_time=max(60, settings.push_due_window_minutes * 60),
+        )
+        self.scheduler.add_job(
+            self.trigger_tracking_topics,
+            "cron",
+            minute="*",
+            id="tracking-topic-crawl",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=300,
         )
         self.scheduler.start()
 
