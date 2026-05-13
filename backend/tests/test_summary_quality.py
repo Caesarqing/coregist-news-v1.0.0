@@ -69,6 +69,39 @@ class SummaryQualityTest(unittest.TestCase):
                 ("https://example.test", "generic-key", "claude-test"),
             )
 
+    def test_openai_compatible_accepts_reasoning_content_response(self):
+        class FakeResponse:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "reasoning_content": "ok",
+                            }
+                        }
+                    ]
+                }
+
+        with patch("services.shared.python.llm.requests.post", return_value=FakeResponse()):
+            self.assertEqual(
+                LLMProvider._invoke_openai_compatible(
+                    base_url="https://example.test/v1",
+                    api_key="key",
+                    remote_model="model",
+                    prompt="hello",
+                    temperature=1,
+                    max_tokens=8,
+                    timeout=1,
+                ),
+                "ok",
+            )
+
     def test_review_bundle_omits_scoring_fields(self):
         service = AIAnalysisService()
 

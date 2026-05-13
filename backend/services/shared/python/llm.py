@@ -169,7 +169,18 @@ class LLMProvider:
             response = requests.post(url, headers=headers, json=payload, timeout=timeout)
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        choice = (data.get("choices") or [{}])[0]
+        message = choice.get("message") or {}
+        if isinstance(message, dict):
+            for field in ("content", "reasoning_content"):
+                content = message.get(field)
+                if content:
+                    return content
+        for field in ("text", "content"):
+            content = choice.get(field)
+            if content:
+                return content
+        raise RuntimeError("OpenAI-compatible response did not include message content")
 
     @staticmethod
     def _invoke_anthropic(
