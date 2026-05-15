@@ -361,6 +361,8 @@ PY
 
 ## 部署
 
+环境变量模板只维护 [backend/.env.example](/Users/qingpeng/全公司项目/7-人工智能/新闻AI项目/coregist-news_v1.0.0/backend/.env.example)。本地或生产部署时复制为 `backend/.env` 后填入真实值，真实 `.env` 不提交。
+
 生产 `.env` 至少包含：
 
 ```env
