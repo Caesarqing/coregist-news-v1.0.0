@@ -9,7 +9,6 @@ from urllib.parse import quote_plus, urlparse
 import feedparser
 from bs4 import BeautifulSoup
 import requests
-from ai.file_registry import load_file_agents, load_file_skills
 from services.shared.python.agent_registry import Agent, AgentRegistry, AgentType
 from services.shared.python.llm import LLMProvider
 from services.shared.python.rss import fetch_rss_entries, list_rss_sources
@@ -449,16 +448,6 @@ def _runtime_default_agents() -> List[Agent]:
 
 def build_default_agent_registry() -> AgentRegistry:
     registry = AgentRegistry()
-    try:
-        file_agents = load_file_agents()
-    except Exception:
-        file_agents = []
-
-    if file_agents:
-        for item in file_agents:
-            registry.register_agent(Agent.from_dict(item))
-        return registry
-
     for agent in _runtime_default_agents():
         registry.register_agent(agent)
     return registry
@@ -567,26 +556,6 @@ def _runtime_default_skills() -> List[Skill]:
 def build_default_skillset(llm_provider: LLMProvider | None = None) -> Skillset:
     del llm_provider
     skillset = Skillset()
-    runtime_skills = {skill.id: skill for skill in _runtime_default_skills()}
-
-    try:
-        file_skills = {item["id"]: item for item in load_file_skills()}
-    except Exception:
-        file_skills = {}
-
-    for skill_id, skill in runtime_skills.items():
-        override = file_skills.get(skill_id)
-        if override:
-            metadata = dict(skill.metadata)
-            metadata.update(override.get("metadata") or {})
-            skill = Skill(
-                id=skill.id,
-                name=override.get("name", skill.name),
-                description=override.get("description", skill.description),
-                parameters=override.get("parameters", skill.parameters),
-                returns=override.get("returns", skill.returns),
-                implementation=skill.implementation,
-                metadata=metadata,
-            )
+    for skill in _runtime_default_skills():
         skillset.register_skill(skill)
     return skillset

@@ -77,12 +77,12 @@ mongoose.connect(MONGODB_URI, mongoOptions)
     // 4. 测试基本操作
     console.log('\n5️⃣  测试基本操作...');
     try {
-      const User = require('../models/User');
+      const User = require('../services/user-service/models/User');
       const userCount = await User.countDocuments();
       console.log('   ✅ User 模型查询成功');
       console.log('   用户数量:', userCount);
       
-      const News = require('../models/News');
+      const News = require('../services/news-service/models/News');
       const newsCount = await News.countDocuments();
       console.log('   ✅ News 模型查询成功');
       console.log('   新闻数量:', newsCount);

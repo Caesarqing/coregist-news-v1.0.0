@@ -40,16 +40,4 @@ export const API_PATHS = {
     topicStatus: (id: string) => `/tracking/topics/${id}/status`,
     analytics: '/tracking/analytics',
   },
-  agent: {
-    defaults: '/agents/defaults',
-    bootstrap: '/agents/bootstrap',
-    list: '/agents',
-    detail: (id: string) => `/agents/${id}`,
-  },
-  skill: {
-    defaults: '/skills/defaults',
-    bootstrap: '/skills/bootstrap',
-    list: '/skills',
-    detail: (id: string) => `/skills/${id}`,
-  },
 } as const;

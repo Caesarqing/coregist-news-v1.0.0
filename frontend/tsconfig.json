@@ -24,9 +24,6 @@
       "@coregist/contracts": [
         "../packages/contracts/src/index.ts"
       ],
-      "@coregist/design-tokens": [
-        "../packages/design-tokens/src/index.ts"
-      ],
       "~/*": [
         "src/*"
       ]

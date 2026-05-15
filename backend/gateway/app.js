@@ -33,8 +33,6 @@ const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || process.env.ACCESS_TOKEN_S
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
 const NEWS_SERVICE_URL = process.env.NEWS_SERVICE_URL || 'http://localhost:3002';
 const SEARCH_SERVICE_URL = process.env.SEARCH_SERVICE_URL || 'http://localhost:3005';
-const AGENT_CONFIG_SERVICE_URL = process.env.AGENT_CONFIG_SERVICE_URL || 'http://localhost:3003';
-const SKILL_CONFIG_SERVICE_URL = process.env.SKILL_CONFIG_SERVICE_URL || 'http://localhost:3004';
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -94,8 +92,6 @@ app.get('/api/health', async (req, res) => {
     { name: 'user-service', url: `${USER_SERVICE_URL}/health` },
     { name: 'news-service', url: `${NEWS_SERVICE_URL}/health` },
     { name: 'search-service', url: `${SEARCH_SERVICE_URL}/health` },
-    { name: 'agent-config-service', url: `${AGENT_CONFIG_SERVICE_URL}/health` },
-    { name: 'skill-config-service', url: `${SKILL_CONFIG_SERVICE_URL}/health` },
   ];
 
   const services = await Promise.all(
@@ -126,9 +122,6 @@ app.use('/api/news/search', authenticateToken, (req, res) => forwardRequest(req,
 app.use('/api/search', authenticateToken, (req, res) => forwardRequest(req, res, `${SEARCH_SERVICE_URL}/search`, '/api/search'));
 app.use('/api/news', authenticateToken, (req, res) => forwardRequest(req, res, `${NEWS_SERVICE_URL}/news`, '/api/news'));
 app.use('/api/ai-search', authenticateToken, (req, res) => forwardRequest(req, res, SEARCH_SERVICE_URL, '/api'));
-
-app.use('/api/agents', authenticateToken, (req, res) => forwardRequest(req, res, `${AGENT_CONFIG_SERVICE_URL}/agents`, '/api/agents'));
-app.use('/api/skills', authenticateToken, (req, res) => forwardRequest(req, res, `${SKILL_CONFIG_SERVICE_URL}/skills`, '/api/skills'));
 
 const port = Number(process.env.GATEWAY_PORT || process.env.PORT) || 3000;
 app.listen(port, () => {

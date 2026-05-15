@@ -3,13 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "bash -lc './backend/scripts/start-local-backend.sh && npm --prefix frontend run dev'",
-    "dev:legacy": "concurrently -k -n backend,frontend -c yellow,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "check:backend": "npm --prefix backend run check"
-  },
-  "devDependencies": {
-    "concurrently": "^9.2.1"
   }
 }

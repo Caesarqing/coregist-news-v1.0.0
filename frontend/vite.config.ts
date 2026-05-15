@@ -10,7 +10,6 @@ export default defineConfig({
       '~': path.resolve(__dirname, './src'),
       '@': path.resolve(__dirname, './'),
       '@coregist/contracts': path.resolve(__dirname, '../packages/contracts/src/index.ts'),
-      '@coregist/design-tokens': path.resolve(__dirname, '../packages/design-tokens/src/index.ts'),
     },
   },
   // Remove custom css.preprocessorOptions.css to satisfy current TS types

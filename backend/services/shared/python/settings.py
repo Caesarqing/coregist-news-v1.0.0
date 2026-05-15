@@ -107,8 +107,6 @@ class ServiceSettings:
     tracking_default_remaining_count: int = int(os.getenv("TRACKING_DEFAULT_REMAINING_COUNT", "5"))
     tracking_max_remaining_count: int = int(os.getenv("TRACKING_MAX_REMAINING_COUNT", "10"))
     fcm_server_key: str = os.getenv("FCM_SERVER_KEY", "")
-    agent_config_port: int = int(os.getenv("AGENT_CONFIG_PORT", "3003"))
-    skill_config_port: int = int(os.getenv("SKILL_CONFIG_PORT", "3004"))
     
     # AI worker and retry configuration
     ai_worker_concurrency: int = int(os.getenv("AI_WORKER_CONCURRENCY", "5"))

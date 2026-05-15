@@ -11,8 +11,6 @@
     "./user": "./src/user.ts",
     "./news": "./src/news.ts",
     "./tracking": "./src/tracking.ts",
-    "./ai": "./src/ai.ts",
-    "./agents": "./src/agents.ts",
-    "./skills": "./src/skills.ts"
+    "./ai": "./src/ai.ts"
   }
 }

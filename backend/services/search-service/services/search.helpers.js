@@ -1,8 +1,8 @@
 const { randomUUID } = require('crypto');
 const mongoose = require('mongoose');
 
-const News = require('../../../models/News');
-const User = require('../../../models/User');
+const News = require('../../news-service/models/News');
+const User = require('../../user-service/models/User');
 const { publish, QUEUE_KEYWORD_SEARCH } = require('../../shared/node/queue');
 const {
   buildFreshNewsFilter,

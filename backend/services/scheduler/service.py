@@ -373,7 +373,6 @@ class SchedulerService:
                                 "notificationId": "",
                                 "notificationQueuedAt": None,
                                 "searchJobId": "",
-                                "lastRunAt": datetime.utcnow(),
                                 "lastError": "",
                                 "createdAt": datetime.utcnow(),
                             },

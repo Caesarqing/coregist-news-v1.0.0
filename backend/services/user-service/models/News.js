@@ -1,1 +1,1 @@
-module.exports = require('../../../models/News');
+module.exports = require('../../news-service/models/News');

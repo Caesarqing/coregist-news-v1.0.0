@@ -305,8 +305,6 @@ start_service "user-service" "3001" "services/user-service/app.js" "node service
 start_service "news-service" "3002" "services/news-service/app.js" "node services/news-service/app.js"
 start_service "search-service" "3005" "services/search-service/app.js" "node services/search-service/app.js"
 start_service "gateway" "3000" "gateway/app.js" "node gateway/app.js"
-start_service "agent-config-service" "3003" "services/agent_config/app.py" "\"$PYTHON_BIN\" services/agent_config/app.py"
-start_service "skill-config-service" "3004" "services/skill_config/app.py" "\"$PYTHON_BIN\" services/skill_config/app.py"
 start_service "scheduler-service" "" "services/scheduler/app.py" "\"$PYTHON_BIN\" services/scheduler/app.py"
 start_service "news-rss-worker" "" "services/news_scraper/app.py --worker-mode rss" "\"$PYTHON_BIN\" services/news_scraper/app.py --worker-mode rss"
 start_service "news-keyword-worker" "" "services/news_scraper/app.py --worker-mode keyword" "\"$PYTHON_BIN\" services/news_scraper/app.py --worker-mode keyword"

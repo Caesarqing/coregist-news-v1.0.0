@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const config = require('./config');
-const User = require('../../../models/User');
+const User = require('../../user-service/models/User');
 
 const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 const googleClient = config.googleClientId ? new OAuth2Client(config.googleClientId) : null;

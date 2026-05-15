@@ -6,5 +6,3 @@ export * from './news';
 export * from './tracking';
 export * from './ai';
 export * from './search';
-export * from './agents';
-export * from './skills';

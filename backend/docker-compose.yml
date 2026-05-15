@@ -38,16 +38,12 @@ services:
       - user-service
       - news-service
       - search-service
-      - agent-config-service
-      - skill-config-service
     environment:
       PORT: 3000
       ACCESS_TOKEN_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       USER_SERVICE_URL: http://user-service:3001
       NEWS_SERVICE_URL: http://news-service:3002
       SEARCH_SERVICE_URL: http://search-service:3005
-      AGENT_CONFIG_SERVICE_URL: http://agent-config-service:3003
-      SKILL_CONFIG_SERVICE_URL: http://skill-config-service:3004
     ports:
       - "3000:3000"
 
@@ -280,32 +276,6 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
-      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
-      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
-
-  agent-config-service:
-    build:
-      context: .
-      dockerfile: services/agent_config/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - mongodb
-    environment:
-      PYTHONUNBUFFERED: "1"
-      AGENT_CONFIG_PORT: 3003
-      MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
-      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
-
-  skill-config-service:
-    build:
-      context: .
-      dockerfile: services/skill_config/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - mongodb
-    environment:
-      PYTHONUNBUFFERED: "1"
-      SKILL_CONFIG_PORT: 3004
       MONGODB_URI: ${DOCKER_MONGODB_URI:-mongodb://root:example@mongodb:27017/coregistnews?authSource=admin}
       MONGODB_DB_NAME: ${MONGODB_DB_NAME:-coregistnews}
 
