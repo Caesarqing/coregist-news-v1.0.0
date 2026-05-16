@@ -1,52 +1,177 @@
 # CoreGist News
 
-最后更新：2026-05-14
+<img src="docs/assets/coregist-logo-512.png" alt="CoreGist News Logo" width="96" height="96">
 
-CoreGist News 是一个 AI 新闻聚合、搜索、分析和推送平台。当前代码库已收敛到 Gateway + 业务微服务 + Python 新闻流水线架构，不再保留外部 Agent / Skill 配置平台或 legacy server 入口。
+CoreGist News 是一个面向新闻聚合、AI 摘要、智能搜索和个性化推送的 Web 应用。系统由 React 前端、Node.js API 微服务、Python 新闻处理管线、MongoDB 和 RabbitMQ 组成，前端统一通过 Gateway 访问后端服务，后台 worker 负责 RSS 抓取、内容清洗、AI 分析和通知投递。
 
-## 当前架构
+<img src="docs/assets/news-showcase.png" alt="CoreGist News showcase" width="100%">
+
+## 目录
+
+- [功能概览](#功能概览)
+- [系统架构](#系统架构)
+- [目录结构](#目录结构)
+- [服务与端口](#服务与端口)
+- [环境配置](#环境配置)
+- [本地开发](#本地开发)
+- [新闻处理管线](#新闻处理管线)
+- [API 与认证](#api-与认证)
+- [部署](#部署)
+- [运维检查](#运维检查)
+- [维护约定](#维护约定)
+
+## 功能概览
+
+- 新闻聚合：从 RSS 和关键词任务抓取新闻，清洗正文并统一入库。
+- AI 摘要：生成中英文标题、摘要、标签、分类、事实复核和情绪/偏向分析。
+- 搜索体验：支持普通新闻搜索、AI 搜索和用户追踪主题。
+- 个性化推送：按用户追踪主题生成批次，沉淀推送结果和推送历史。
+- 多端一致：前端通过统一 `/api/*` 入口访问后端，生产环境便于反向代理和鉴权。
+
+## 系统架构
 
 ```text
 Browser
   -> Frontend
   -> Gateway /api/*
-  -> User / News / Search services
+  -> User Service / News Service / Search Service
 
-Scheduler / manual trigger
+Scheduler / Manual Trigger
   -> RabbitMQ
   -> News Scraper
   -> Content Processing
   -> AI Dispatcher
   -> AI Analysis
   -> MongoDB
-  -> News / Search API
+  -> News API / Search API / Notification
 ```
 
-核心目录：
+核心运行组件：
 
-- `frontend/`: React 18 + TypeScript + Vite Web 客户端。
-- `backend/gateway/`: 唯一 HTTP API 网关。
-- `backend/services/`: Node.js 在线服务和 Python 后台 worker。
-- `backend/services/shared/`: Node / Python 共享运行时代码。
-- `backend/pipeline/`: 抓取、解析和 RSS 来源工具。
-- `packages/contracts/`: 前后端共享 DTO、路径常量和类型定义。
+| 组件 | 说明 |
+| --- | --- |
+| Frontend | React + TypeScript + Vite 前端应用 |
+| Gateway | 统一 API 入口，负责鉴权和请求转发 |
+| User Service | 用户、登录、设置、追踪主题和推送状态 |
+| News Service | 新闻列表、详情、分类和展示过滤 |
+| Search Service | 新闻搜索、AI 搜索和聚合查询 |
+| Scheduler | 周期性发布 RSS 抓取和关键词任务 |
+| News Scraper | 抓取 RSS、文章页和来源元数据 |
+| Content Processing | 清洗正文、过滤低质内容、分类和标准化 |
+| AI Dispatcher | 将待分析新闻分发给 AI 分析队列 |
+| AI Analysis | 摘要、复核、标签、图片兜底和最终入库 |
+| Notification | 消费通知任务并投递 |
 
-服务端口：
+## 目录结构
 
-| 服务 | 端口 | 说明 |
-| --- | --- | --- |
-| Frontend | 5173 | Vite 开发服务器 |
-| Gateway | 3000 | API 网关，唯一公开入口 |
-| User Service | 3001 | 用户、认证、设置、追踪主题 |
-| News Service | 3002 | 新闻查询和详情 |
-| Search Service | 3005 | 搜索、聚合和 AI 搜索入口 |
-| MongoDB | 27017 | 主数据库 |
-| RabbitMQ | 5672 | 消息队列 |
-| Redis | 6379 | 缓存基础设施 |
+```text
+frontend/                    React Web 客户端
+backend/gateway/             API Gateway
+backend/services/            Node.js 服务与 Python worker
+backend/services/shared/     Node / Python 共享运行时
+backend/scripts/             运维、修复和本地启动脚本
+packages/contracts/          前后端共享 DTO、路径常量和类型
+docs/assets/                 README 与文档图片资源
+```
 
-## 快速开始
+常用源码入口：
 
-安装依赖后启动完整开发环境：
+- `frontend/src/app/`: 应用入口、路由和 providers。
+- `frontend/src/pages/`: 页面实现。
+- `backend/gateway/app.js`: Gateway 服务。
+- `backend/services/user-service/app.js`: 用户服务。
+- `backend/services/news-service/app.js`: 新闻服务。
+- `backend/services/search-service/app.js`: 搜索服务。
+- `backend/services/news_scraper/app.py`: 新闻抓取 worker。
+- `backend/services/content_processing/app.py`: 内容处理 worker。
+- `backend/services/ai_analysis/app.py`: AI 分析 worker。
+
+## 服务与端口
+
+| 服务 | 默认端口 | 配置变量 |
+| --- | ---: | --- |
+| Frontend | 5173 | `VITE_API_BASE_URL` |
+| Gateway | 3000 | `GATEWAY_PORT` |
+| User Service | 3001 | `USER_SERVICE_PORT` |
+| News Service | 3002 | `NEWS_SERVICE_PORT` |
+| Search Service | 3005 | `SEARCH_SERVICE_PORT` |
+| MongoDB | 27017 | `MONGODB_URI` |
+| RabbitMQ | 5672 | `RABBITMQ_URL` |
+| Redis | 6379 | `REDIS_URL` |
+
+生产环境建议只公开 Frontend 和 Gateway，其他服务通过 `127.0.0.1` 或内网访问。
+
+## 环境配置
+
+唯一环境变量模板是 [backend/.env.example](backend/.env.example)。本地或生产部署时复制为 `backend/.env` 后填入真实值，真实 `.env` 不提交。
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+最小 API 服务配置：
+
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017/coregistnews
+MONGODB_DB_NAME=coregistnews
+JWT_SECRET=change-me
+JWT_REFRESH_SECRET=change-me
+GATEWAY_PORT=3000
+USER_SERVICE_PORT=3001
+NEWS_SERVICE_PORT=3002
+SEARCH_SERVICE_PORT=3005
+USER_SERVICE_URL=http://127.0.0.1:3001
+NEWS_SERVICE_URL=http://127.0.0.1:3002
+SEARCH_SERVICE_URL=http://127.0.0.1:3005
+```
+
+完整新闻管线还需要：
+
+```env
+RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
+LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=https://your-provider.example/v1
+LLM_API_KEY=your-key
+LLM_MODEL=your-model
+LLM_JSON_MODE=false
+AI_CONTENT_MODEL=openai-compatible
+AI_REVIEW_MODEL=openai-compatible
+AI_CONTENT_JSON_MODE=false
+AI_REVIEW_JSON_MODE=false
+```
+
+RSS 与队列保护建议：
+
+```env
+RSS_SOURCE_BATCH_SIZE=8
+RSS_MAX_ITEMS_PER_FEED=2
+RSS_BROWSER_TIMEOUT_MS=8000
+RSS_HTTP_LIMITED_BACKOFF_SECONDS=21600
+RSS_HTTP_LIMITED_QUARANTINE_THRESHOLD=2
+RSS_HTTP_LIMITED_QUARANTINE_SECONDS=86400
+NEWS_RAW_QUEUE_MAX_MESSAGES=5000
+AI_TASKS_QUEUE_MAX_MESSAGES=1000
+RSS_SKIP_WHEN_BACKLOGGED=true
+```
+
+生产安全要求：
+
+- `JWT_SECRET` 和 `JWT_REFRESH_SECRET` 必须使用强随机字符串。
+- `ALLOW_UNVERIFIED_FIREBASE_TOKENS=false`。
+- 不在 README、日志、shell history 或 Git 提交中写真实 API key。
+- 如密钥曾经暴露，立即轮换 MongoDB、JWT、LLM、Firebase/OAuth 相关密钥。
+
+## 本地开发
+
+安装依赖：
+
+```bash
+npm install
+npm --prefix backend install
+npm --prefix frontend install
+```
+
+启动完整开发环境：
 
 ```bash
 npm run dev
@@ -55,24 +180,13 @@ npm run dev
 常用命令：
 
 ```bash
-npm run dev
 npm run build
 npm run check:backend
 npm --prefix frontend run build
 npm --prefix backend run check
-```
-
-保留的维护脚本：
-
-```bash
 bash backend/scripts/start-local-backend.sh
 bash backend/scripts/stop-local-backend.sh
 bash backend/scripts/check-services.sh
-python backend/scripts/check-push-health.py
-python backend/scripts/repair-news-pipeline.py --help
-python backend/scripts/repair-news-localization.py --help
-node backend/scripts/setAdmin.js <email>
-node backend/scripts/test-mongodb-connection.js
 ```
 
 健康检查：
@@ -90,185 +204,32 @@ docker compose ps
 docker compose logs --tail=100 gateway
 ```
 
-## 前端
-
-技术栈：
-
-- React 18
-- TypeScript
-- Vite
-- React Router v6
-- Tailwind CSS
-- shadcn/ui
-- Firebase Auth
-
-目录结构：
+## 新闻处理管线
 
 ```text
-frontend/src/app/       应用入口、路由和 providers
-frontend/src/api/       API client
-frontend/src/config/    Firebase 等配置
-frontend/src/contexts/  全局上下文
-frontend/src/pages/     页面
-frontend/src/shared/    共享组件、布局、UI 和 i18n
-frontend/src/styles/    全局样式
-frontend/src/types/     类型声明
-frontend/src/utils/     工具函数
-```
-
-前端统一通过同源 `/api` 访问 Gateway。生产环境不要直接把前端指向内部微服务端口。
-
-推荐生产配置：
-
-```env
-VITE_API_BASE_URL=/api
-```
-
-公开路由：
-
-- `/`
-- `/login`
-- `/register`
-- `/forgot-password`
-- `/privacy`
-- `/terms`
-
-受保护路由：
-
-- `/home`
-- `/home/news-push`
-- `/home/news-push/:id`
-- `/home/news-push/:id/news`
-- `/home/news-data`
-- `/home/news-data/:id`
-- `/home/news-data/my-space`
-- `/home/news-data/my-space/:id`
-- `/home/targeted-tracking`
-- `/home/targeted-tracking/:id`
-- `/news`
-- `/news/:id`
-- `/profile`
-- `/profile/general`
-- `/profile/notification`
-- `/profile/privacy`
-- `/profile/edit-profile`
-- `/profile/help`
-
-## 后端
-
-在线 API：
-
-- `backend/gateway/app.js`
-- `backend/services/user-service/app.js`
-- `backend/services/news-service/app.js`
-- `backend/services/search-service/app.js`
-
-离线 worker：
-
-- `backend/services/scheduler/app.py`
-- `backend/services/news_scraper/app.py`
-- `backend/services/content_processing/app.py`
-- `backend/services/ai_dispatcher/app.py`
-- `backend/services/ai_analysis/app.py`
-- `backend/services/notification/app.py`
-
-共享运行时：
-
-- `backend/services/shared/node/`: Node.js 配置、鉴权、队列、新闻展示 helper。
-- `backend/services/shared/python/settings.py`: `.env` 读取和服务配置。
-- `backend/services/shared/python/queue.py`: RabbitMQ 队列封装和队列名常量。
-- `backend/services/shared/python/llm.py`: OpenAI-compatible / Anthropic / mock 通用 LLM provider。
-- `backend/services/shared/python/agent_runtime.py`: 内部 prompt 和 skill helper，不对外暴露配置 API。
-- `backend/services/shared/python/repositories/`: MongoDB repository 封装。
-
-代码边界：
-
-- 用户域代码放在 `services/user-service/`。
-- 新闻查询代码放在 `services/news-service/`。
-- 搜索聚合代码放在 `services/search-service/`。
-- Python worker 优先从 `services/shared/python/` 导入共享能力。
-- 不再新增 legacy 入口；前端访问后端统一走 Gateway `/api/*`。
-
-## API 与认证
-
-认证链路：
-
-```text
-Frontend Login/Register
-  -> /api/auth/*
-  -> User Service
-  -> JWT access token / refresh token
-  -> Frontend stores auth state
-  -> ProtectedRoute protects app pages
-  -> Gateway verifies Bearer token for business APIs
-```
-
-Gateway 公开路径：
-
-- `/api/health`: 健康检查，不需要登录。
-- `/api/auth/*`: 登录、注册、刷新 token。
-- `/api/user/*`、`/api/users/*`、`/api/tracking/*`: 用户域。
-- `/api/news/*`、`/api/search/*`、`/api/news/search/*`、`/api/ai-search/*`: 需要 JWT。
-
-未携带合法 Bearer token 时返回：
-
-```json
-{"error":"Unauthorized"}
-```
-
-Firebase 兼容登录：
-
-```env
-FIREBASE_PROJECT_ID=coregistnews-news
-ALLOW_UNVERIFIED_FIREBASE_TOKENS=false
-```
-
-生产环境必须保持 `ALLOW_UNVERIFIED_FIREBASE_TOKENS=false`，并配置强随机值：
-
-```env
-JWT_SECRET=...
-JWT_REFRESH_SECRET=...
-```
-
-## 新闻流水线
-
-目标链路：
-
-```text
-Scheduler or manual trigger
-  -> news_crawl_trigger_queue
+news_crawl_trigger_queue
   -> News Scraper
   -> news_raw_queue
   -> Content Processing
   -> ai_tasks_queue
+  -> AI Dispatcher
   -> AI Analysis
-  -> MongoDB final news
-  -> Search Service / News Service
-  -> Frontend
+  -> MongoDB news
 ```
-
-后台服务职责：
-
-| 服务 | 职责 |
-| --- | --- |
-| Scheduler | 周期性发布抓取和关键词搜索任务 |
-| News Scraper | 抓 RSS、页面内容和来源元数据 |
-| Content Processing | 清洗正文、分类、标准化为 raw news |
-| AI Dispatcher | 分发 AI 分析任务 |
-| AI Analysis | 摘要、分类复核、偏向/事实/情绪复核、最终入库 |
-| Notification | 消费通知任务并投递 |
 
 核心队列：
 
-- `news_crawl_trigger_queue`
-- `news_raw_queue`
-- `ai_tasks_queue`
-- `notification_queue`
+| 队列 | 说明 |
+| --- | --- |
+| `news_crawl_trigger_queue` | 抓取触发任务 |
+| `news_raw_queue` | 原始新闻内容 |
+| `ai_tasks_queue` | AI 分析任务 |
+| `news_notifications_queue` | 通知任务 |
 
-手动触发 RSS 抓取：
+手动触发小批量 RSS 抓取：
 
 ```bash
-cd /root/coregist-news/backend
+cd backend
 
 python3 - <<'PY'
 from services.shared.python.queue import QueueClient, QUEUE_NEWS_CRAWL_TRIGGER
@@ -285,117 +246,48 @@ print("published")
 PY
 ```
 
-推荐生产调度配置：
+默认展示策略：
 
-```env
-SCHEDULER_INTERVAL_MINUTES=5
-RSS_SOURCE_BATCH_SIZE=8
-RSS_SOURCE_MIN_INTERVAL_SECONDS=900
-RSS_DOMAIN_MIN_INTERVAL_SECONDS=300
-RSS_SOURCE_ERROR_BACKOFF_SECONDS=1800
+- 新入库新闻以 `postedAt` 为准排序，越新的新闻越靠前。
+- 首页展示聚焦近期新闻，过旧新闻不进入默认展示列表。
+- 搜索可以覆盖更宽的历史范围。
+- RSS 文章页连续 403 / 429 的来源会进入退避或隔离，避免爬虫空转和内存消耗。
+
+## API 与认证
+
+认证链路：
+
+```text
+Frontend Login/Register
+  -> /api/auth/*
+  -> User Service
+  -> JWT access token / refresh token
+  -> Gateway verifies Bearer token
+  -> Protected business APIs
 ```
 
-## LLM 配置
+Gateway 路径：
 
-Python worker 统一通过 `backend/services/shared/python/llm.py` 调用模型。支持：
+| 路径 | 鉴权 | 说明 |
+| --- | --- | --- |
+| `/api/health` | 否 | Gateway 和后端服务健康检查 |
+| `/api/auth/*` | 否 | 登录、注册、刷新 token |
+| `/api/user/*` | 是 | 用户设置和资料 |
+| `/api/users/*` | 是 | 用户相关兼容 API |
+| `/api/tracking/*` | 是 | 追踪主题和推送 |
+| `/api/news/*` | 是 | 新闻列表、详情、分类 |
+| `/api/search/*` | 是 | 搜索 API |
+| `/api/ai-search/*` | 是 | AI 搜索 API |
 
-- `openai-compatible`: `/chat/completions` 兼容接口，适用于 OpenAI、兼容网关、自托管 vLLM / SGLang / TGI、Ollama `/v1` 等。
-- `anthropic`: Anthropic `/v1/messages`。
-- `mock`: 本地调试占位。
+未携带合法 Bearer token 时返回：
 
-通用配置：
-
-```env
-LLM_PROVIDER=openai-compatible
-LLM_BASE_URL=https://your-provider.example/v1
-LLM_API_KEY=your-key
-LLM_MODEL=your-model
-LLM_JSON_MODE=false
-
-AI_CONTENT_MODEL=openai-compatible
-AI_REVIEW_MODEL=openai-compatible
-AI_CONTENT_JSON_MODE=false
-AI_REVIEW_JSON_MODE=false
-```
-
-可选参数：
-
-```env
-LLM_TOKEN_FIELD=max_tokens
-LLM_TOP_P=
-LLM_FREQUENCY_PENALTY=
-LLM_PRESENCE_PENALTY=
-LLM_SYSTEM_PROMPT=
-LLM_EXTRA_BODY_JSON=
-```
-
-如果需要单独覆盖内容模型和复核模型：
-
-```env
-AI_CONTENT_MODEL=openai-compatible
-AI_CONTENT_LLM_MODEL=fast-content-model
-AI_CONTENT_BASE_URL=https://content-provider.example/v1
-AI_CONTENT_API_KEY=content-key
-
-AI_REVIEW_MODEL=openai-compatible
-AI_REVIEW_LLM_MODEL=strong-review-model
-AI_REVIEW_BASE_URL=https://review-provider.example/v1
-AI_REVIEW_API_KEY=review-key
-```
-
-配置检查：
-
-```bash
-cd /root/coregist-news/backend
-
-python3 - <<'PY'
-from services.shared.python.settings import settings
-print("provider:", settings.llm_provider)
-print("base_url:", settings.llm_base_url)
-print("model:", settings.llm_model)
-print("content model:", settings.ai_content_model)
-print("review model:", settings.ai_review_model)
-print("json mode:", settings.llm_json_mode)
-PY
+```json
+{"error":"Unauthorized"}
 ```
 
 ## 部署
 
-环境变量模板只维护 [backend/.env.example](/Users/qingpeng/全公司项目/7-人工智能/新闻AI项目/coregist-news_v1.0.0/backend/.env.example)。本地或生产部署时复制为 `backend/.env` 后填入真实值，真实 `.env` 不提交。
-
-生产 `.env` 至少包含：
-
-```env
-NODE_ENV=production
-PORT=3000
-
-MONGODB_URI=mongodb://user:password@127.0.0.1:27017/coregistnews?authSource=coregistnews
-MONGODB_DB_NAME=coregistnews
-RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
-
-JWT_SECRET=change-me
-JWT_REFRESH_SECRET=change-me
-
-FIREBASE_PROJECT_ID=coregistnews-news
-ALLOW_UNVERIFIED_FIREBASE_TOKENS=false
-
-GATEWAY_PORT=3000
-USER_SERVICE_PORT=3001
-NEWS_SERVICE_PORT=3002
-SEARCH_SERVICE_PORT=3005
-
-USER_SERVICE_URL=http://127.0.0.1:3001
-NEWS_SERVICE_URL=http://127.0.0.1:3002
-SEARCH_SERVICE_URL=http://127.0.0.1:3005
-
-LLM_PROVIDER=openai-compatible
-LLM_BASE_URL=https://your-provider.example/v1
-LLM_API_KEY=your-key
-LLM_MODEL=your-model
-LLM_JSON_MODE=false
-```
-
-PM2 部署：
+PM2 部署流程：
 
 ```bash
 cd /root/coregist-news
@@ -410,14 +302,16 @@ pm2 restart coregist-user --update-env
 pm2 restart coregist-news-service --update-env
 pm2 restart coregist-search-service --update-env
 pm2 restart coregist-scheduler --update-env
-pm2 restart coregist-news-scraper --update-env
+pm2 restart coregist-news-rss-worker --update-env
+pm2 restart coregist-news-keyword-worker --update-env
 pm2 restart coregist-content-processing --update-env
 pm2 restart coregist-ai-dispatcher --update-env
 pm2 restart coregist-ai-analysis --update-env
+pm2 restart coregist-notification --update-env
 pm2 save
 ```
 
-反向代理：
+反向代理建议：
 
 ```text
 /api/* -> http://127.0.0.1:3000/api/*
@@ -432,77 +326,60 @@ curl -i 'https://coregist-news.com/api/news?page=1&limit=1'
 curl -i 'https://coregist-news.com/api/search/public-health'
 ```
 
-未登录新闻 API 返回 401 是正常安全行为。登录后在浏览器访问 `/home` 和 `/news` 应能看到数据。
+未登录访问新闻 API 返回 401 属于正常鉴权行为。登录后页面仍无数据时，优先检查 Gateway 是否转发成功、token 是否随请求发送、`news` 集合是否存在近期数据。
 
-## 运维排查
+## 运维检查
 
 常用状态命令：
 
 ```bash
 pm2 list
 pm2 logs coregist-gateway --lines 80 --nostream
-pm2 logs coregist-user --lines 80 --nostream
-pm2 logs coregist-news-service --lines 80 --nostream
-pm2 logs coregist-search-service --lines 80 --nostream
-pm2 logs coregist-scheduler --lines 80 --nostream
-pm2 logs coregist-news-scraper --lines 80 --nostream
-pm2 logs coregist-content-processing --lines 80 --nostream
-pm2 logs coregist-ai-dispatcher --lines 80 --nostream
+pm2 logs coregist-news-rss-worker --lines 120 --nostream
+pm2 logs coregist-content-processing --lines 120 --nostream
 pm2 logs coregist-ai-analysis --lines 120 --nostream
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
 ```
 
 新闻不更新时按顺序检查：
 
-1. `pm2 list` 确认 worker 在线。
-2. RabbitMQ 是否监听 `5672`。
-3. Scheduler 是否持续报错。
-4. News Scraper 是否只是在某些来源上 401 / 403。
-5. Content Processing / AI Analysis 是否连续 `LLM invoke failed`。
-6. MongoDB 是否可连接。
-7. 手动发布一次 RSS 触发任务。
+1. `pm2 list` 确认 Gateway、News Service、RSS worker、Content Processing、AI Analysis 在线。
+2. `rabbitmqctl list_queues` 确认队列没有大量积压。
+3. News Scraper 日志是否大量出现 403 / 429 / timeout。
+4. Content Processing / AI Analysis 是否出现 LLM 401 / 402 / 429 / timeout。
+5. MongoDB 中 `raw_news` 是否产生新记录，`news` 是否有 72 小时内记录。
+6. 登录后浏览器请求 `/api/news` 是否带 Bearer token 且返回 200。
 
-登录后没有新闻时先区分鉴权和数据问题：
+查看最新入库新闻：
 
 ```bash
-curl -i 'https://coregist-news.com/api/news?page=1&limit=1'
+cd backend
+
+python3 - <<'PY'
+import os
+from pymongo import MongoClient
+
+client = MongoClient(os.environ["MONGODB_URI"])
+db = client[os.environ.get("MONGODB_DB_NAME", "coregistnews")]
+row = db.news.find_one(
+    {},
+    {"_id": 0, "title_zh": 1, "summary_zh": 1, "postedAt": 1, "processed_at": 1, "source_en": 1},
+    sort=[("postedAt", -1)],
+)
+print(row)
+client.close()
+PY
 ```
 
-未带 token 返回 401 是正常的。登录后浏览器仍无数据时，检查 `/api/news` 是否 200、access token 是否随请求发送、News/Search Service 日志，以及最终新闻集合是否有最近入库记录。
+## 维护约定
 
-如果任何真实密钥已经出现在聊天、文档或提交历史里，应轮换：
-
-- MongoDB 用户密码。
-- `JWT_SECRET` / `JWT_REFRESH_SECRET`。
-- LLM API key。
-- Firebase / OAuth 相关密钥。
-
-## 共享包
-
-`@coregist/contracts` 用于沉淀前后端共同依赖的 DTO、路径常量和类型定义，范围包括 Auth、User/Profile/Settings、News、Tracking、AI Search 和 API path constants。当前前端仍存在部分本地类型，新增或修改 API 时应逐步迁移到本包。
-
-## 本地生成物
-
-以下目录是本地依赖、构建产物或运行时缓存，不属于源码精简范围，可按需删除后重装或重新生成：
-
-- `.venv/`
-- `node_modules/`
-- `backend/node_modules/`
-- `frontend/node_modules/`
-- `frontend/dist/`
-- `backend/.runtime/`
-
-## Attributions
-
-This project uses components from [shadcn/ui](https://ui.shadcn.com/) under the [MIT license](https://github.com/shadcn-ui/ui/blob/main/LICENSE.md).
-
-Some original design assets referenced Unsplash photos under the [Unsplash license](https://unsplash.com/license).
-
-## 文档维护规则
-
-- 根 `README.md` 是唯一长期项目文档入口。
-- 新增功能优先更新本文件，不再新增一次性“修复完成报告”或重复指南。
-- 临时排查记录应进入 issue、PR 或运维日志，确认长期有效后再整理进本文件。
-- 不在文档中写入真实密钥、数据库密码、JWT secret 或第三方 token。
+- 根 `README.md` 是长期项目说明入口。
+- 环境变量说明只维护 `backend/.env.example`。
+- 新增 API 时优先同步 `packages/contracts/`。
+- 前端访问后端统一走 Gateway `/api/*`。
+- Python worker 共享能力优先放在 `backend/services/shared/python/`。
+- Node 服务共享能力优先放在 `backend/services/shared/node/`。
+- 不提交 `.env`、运行时缓存、构建产物或真实密钥。
 
 ## License
 
