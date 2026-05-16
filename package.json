@@ -1,6 +1,7 @@
 {
   "name": "coregist-news",
   "private": true,
+  "license": "GPL-3.0-only",
   "scripts": {
     "dev": "bash -lc './backend/scripts/start-local-backend.sh && npm --prefix frontend run dev'",
     "dev:backend": "npm --prefix backend run dev",

@@ -2,6 +2,7 @@
   "name": "ai-news",
   "version": "1.0.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "description": "AI 新闻推荐与阅读应用，基于 React + TypeScript。",
   "scripts": {

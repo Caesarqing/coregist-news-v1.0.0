@@ -1,94 +1,135 @@
 # CoreGist News
 
-<img src="docs/assets/coregist-logo-512.png" alt="CoreGist News Logo" width="96" height="96">
+<p align="center">
+  <img src="docs/assets/coregist-logo-512.png" alt="CoreGist News Logo" width="160" height="160">
+</p>
 
-CoreGist News 是一个面向新闻聚合、AI 摘要、智能搜索和个性化推送的 Web 应用。系统由 React 前端、Node.js API 微服务、Python 新闻处理管线、MongoDB 和 RabbitMQ 组成，前端统一通过 Gateway 访问后端服务，后台 worker 负责 RSS 抓取、内容清洗、AI 分析和通知投递。
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+CoreGist News is a GPLv3-licensed AI news application for learning, academic research, and educational demonstrations. It combines a React frontend, Node.js API services, Python news workers, MongoDB, RabbitMQ, and an LLM provider to collect news, clean articles, generate summaries, support search, and prepare personalized news pushes.
 
 <img src="docs/assets/news-showcase.png" alt="CoreGist News showcase" width="100%">
 
-## 目录
+## Table of Contents
 
-- [功能概览](#功能概览)
-- [系统架构](#系统架构)
-- [目录结构](#目录结构)
-- [服务与端口](#服务与端口)
-- [环境配置](#环境配置)
-- [本地开发](#本地开发)
-- [新闻处理管线](#新闻处理管线)
-- [API 与认证](#api-与认证)
-- [部署](#部署)
-- [运维检查](#运维检查)
-- [维护约定](#维护约定)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Download and Installation](#download-and-installation)
+- [Project Structure](#project-structure)
+- [Services and Ports](#services-and-ports)
+- [Configuration](#configuration)
+- [News Pipeline](#news-pipeline)
+- [API and Authentication](#api-and-authentication)
+- [Deployment](#deployment)
+- [Operations](#operations)
+- [Disclaimer and Compliance](#disclaimer-and-compliance)
+- [License](#license)
 
-## 功能概览
+## Features
 
-- 新闻聚合：从 RSS 和关键词任务抓取新闻，清洗正文并统一入库。
-- AI 摘要：生成中英文标题、摘要、标签、分类、事实复核和情绪/偏向分析。
-- 搜索体验：支持普通新闻搜索、AI 搜索和用户追踪主题。
-- 个性化推送：按用户追踪主题生成批次，沉淀推送结果和推送历史。
-- 多端一致：前端通过统一 `/api/*` 入口访问后端，生产环境便于反向代理和鉴权。
+- News aggregation from RSS and keyword-based crawl tasks.
+- Article cleanup, source normalization, recency filtering, and queue-based processing.
+- AI-generated titles, summaries, tags, categories, bias review, fact review, and sentiment signals.
+- News search, AI search, tracking topics, and personalized push batches.
+- A single Gateway entrypoint for frontend API access and service authentication.
 
-## 系统架构
+## Prerequisites
 
-```text
-Browser
-  -> Frontend
-  -> Gateway /api/*
-  -> User Service / News Service / Search Service
+- Node.js 18+
+- Python 3.10+
+- MongoDB
+- RabbitMQ
+- Redis, optional for cache-related workflows
+- An OpenAI-compatible, Anthropic, or mock LLM provider
 
-Scheduler / Manual Trigger
-  -> RabbitMQ
-  -> News Scraper
-  -> Content Processing
-  -> AI Dispatcher
-  -> AI Analysis
-  -> MongoDB
-  -> News API / Search API / Notification
+## Download and Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/Caesarqing/coregist-news-v1.0.0.git
+cd coregist-news-v1.0.0
 ```
 
-核心运行组件：
+Install dependencies:
 
-| 组件 | 说明 |
-| --- | --- |
-| Frontend | React + TypeScript + Vite 前端应用 |
-| Gateway | 统一 API 入口，负责鉴权和请求转发 |
-| User Service | 用户、登录、设置、追踪主题和推送状态 |
-| News Service | 新闻列表、详情、分类和展示过滤 |
-| Search Service | 新闻搜索、AI 搜索和聚合查询 |
-| Scheduler | 周期性发布 RSS 抓取和关键词任务 |
-| News Scraper | 抓取 RSS、文章页和来源元数据 |
-| Content Processing | 清洗正文、过滤低质内容、分类和标准化 |
-| AI Dispatcher | 将待分析新闻分发给 AI 分析队列 |
-| AI Analysis | 摘要、复核、标签、图片兜底和最终入库 |
-| Notification | 消费通知任务并投递 |
-
-## 目录结构
-
-```text
-frontend/                    React Web 客户端
-backend/gateway/             API Gateway
-backend/services/            Node.js 服务与 Python worker
-backend/services/shared/     Node / Python 共享运行时
-backend/scripts/             运维、修复和本地启动脚本
-packages/contracts/          前后端共享 DTO、路径常量和类型
-docs/assets/                 README 与文档图片资源
+```bash
+npm install
+npm --prefix backend install
+npm --prefix frontend install
 ```
 
-常用源码入口：
+Create the backend environment file:
 
-- `frontend/src/app/`: 应用入口、路由和 providers。
-- `frontend/src/pages/`: 页面实现。
-- `backend/gateway/app.js`: Gateway 服务。
-- `backend/services/user-service/app.js`: 用户服务。
-- `backend/services/news-service/app.js`: 新闻服务。
-- `backend/services/search-service/app.js`: 搜索服务。
-- `backend/services/news_scraper/app.py`: 新闻抓取 worker。
-- `backend/services/content_processing/app.py`: 内容处理 worker。
-- `backend/services/ai_analysis/app.py`: AI 分析 worker。
+```bash
+cp backend/.env.example backend/.env
+```
 
-## 服务与端口
+Edit `backend/.env` and provide at least MongoDB, JWT, RabbitMQ, and LLM settings. Start the local development environment:
 
-| 服务 | 默认端口 | 配置变量 |
+```bash
+npm run dev
+```
+
+Run checks:
+
+```bash
+npm run check:backend
+npm --prefix frontend run build
+```
+
+Health check:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+## Project Structure
+
+```text
+coregist-news-v1.0.0/
+├── README.md                       English project guide
+├── README.zh-CN.md                 Chinese project guide
+├── LICENSE                         GNU GPLv3 license
+├── package.json                    Root scripts
+├── backend/
+│   ├── .env.example                Unified backend environment template
+│   ├── docker-compose.yml          Local infrastructure and service compose file
+│   ├── gateway/                    API Gateway and request forwarding
+│   ├── services/
+│   │   ├── user-service/           Users, authentication, settings, tracking topics
+│   │   ├── news-service/           News list, detail, category, and display APIs
+│   │   ├── search-service/         Search, AI search, and aggregation APIs
+│   │   ├── news_scraper/           RSS and keyword crawl workers
+│   │   ├── content_processing/     Article cleanup, quality checks, classification
+│   │   ├── ai_dispatcher/          AI task dispatch worker
+│   │   ├── ai_analysis/            Summary, review, tagging, and final persistence
+│   │   ├── notification/           Notification delivery worker
+│   │   └── shared/                 Shared Node.js and Python runtime helpers
+│   └── scripts/                    Local startup, diagnostics, and repair scripts
+├── frontend/
+│   ├── public/                     Static icons and public assets
+│   └── src/                        React application source
+├── packages/
+│   └── contracts/                  Shared DTOs, API paths, and TypeScript types
+└── docs/
+    └── assets/                     README images and documentation assets
+```
+
+Directory notes:
+
+- `frontend/src/app/` contains app bootstrap, routing, and providers.
+- `frontend/src/pages/` contains user-facing pages.
+- `backend/gateway/app.js` is the only public API entrypoint.
+- Python workers import shared behavior from `backend/services/shared/python/`.
+- Node services import shared behavior from `backend/services/shared/node/`.
+- `packages/contracts/` should be updated when public API types or paths change.
+
+## Services and Ports
+
+| Service | Default Port | Environment Variable |
 | --- | ---: | --- |
 | Frontend | 5173 | `VITE_API_BASE_URL` |
 | Gateway | 3000 | `GATEWAY_PORT` |
@@ -99,17 +140,13 @@ docs/assets/                 README 与文档图片资源
 | RabbitMQ | 5672 | `RABBITMQ_URL` |
 | Redis | 6379 | `REDIS_URL` |
 
-生产环境建议只公开 Frontend 和 Gateway，其他服务通过 `127.0.0.1` 或内网访问。
+In production, expose only the frontend and Gateway. Keep internal services on `127.0.0.1` or a private network.
 
-## 环境配置
+## Configuration
 
-唯一环境变量模板是 [backend/.env.example](backend/.env.example)。本地或生产部署时复制为 `backend/.env` 后填入真实值，真实 `.env` 不提交。
+The only maintained backend environment template is [backend/.env.example](backend/.env.example). Copy it to `backend/.env` and replace placeholder values.
 
-```bash
-cp backend/.env.example backend/.env
-```
-
-最小 API 服务配置：
+Minimum API service configuration:
 
 ```env
 MONGODB_URI=mongodb://127.0.0.1:27017/coregistnews
@@ -125,7 +162,7 @@ NEWS_SERVICE_URL=http://127.0.0.1:3002
 SEARCH_SERVICE_URL=http://127.0.0.1:3005
 ```
 
-完整新闻管线还需要：
+Minimum full news pipeline configuration:
 
 ```env
 RABBITMQ_URL=amqp://guest:guest@127.0.0.1:5672/
@@ -140,7 +177,7 @@ AI_CONTENT_JSON_MODE=false
 AI_REVIEW_JSON_MODE=false
 ```
 
-RSS 与队列保护建议：
+Recommended RSS and queue pressure controls:
 
 ```env
 RSS_SOURCE_BATCH_SIZE=8
@@ -154,57 +191,14 @@ AI_TASKS_QUEUE_MAX_MESSAGES=1000
 RSS_SKIP_WHEN_BACKLOGGED=true
 ```
 
-生产安全要求：
+Security requirements:
 
-- `JWT_SECRET` 和 `JWT_REFRESH_SECRET` 必须使用强随机字符串。
-- `ALLOW_UNVERIFIED_FIREBASE_TOKENS=false`。
-- 不在 README、日志、shell history 或 Git 提交中写真实 API key。
-- 如密钥曾经暴露，立即轮换 MongoDB、JWT、LLM、Firebase/OAuth 相关密钥。
+- Use strong random values for `JWT_SECRET` and `JWT_REFRESH_SECRET`.
+- Keep `ALLOW_UNVERIFIED_FIREBASE_TOKENS=false` in production.
+- Do not commit real `.env` files, API keys, database credentials, JWT secrets, or third-party tokens.
+- Rotate any secret that appears in chat logs, shell history, application logs, or Git history.
 
-## 本地开发
-
-安装依赖：
-
-```bash
-npm install
-npm --prefix backend install
-npm --prefix frontend install
-```
-
-启动完整开发环境：
-
-```bash
-npm run dev
-```
-
-常用命令：
-
-```bash
-npm run build
-npm run check:backend
-npm --prefix frontend run build
-npm --prefix backend run check
-bash backend/scripts/start-local-backend.sh
-bash backend/scripts/stop-local-backend.sh
-bash backend/scripts/check-services.sh
-```
-
-健康检查：
-
-```bash
-curl http://localhost:3000/api/health
-```
-
-Docker Compose：
-
-```bash
-cd backend
-docker compose up -d --build
-docker compose ps
-docker compose logs --tail=100 gateway
-```
-
-## 新闻处理管线
+## News Pipeline
 
 ```text
 news_crawl_trigger_queue
@@ -217,16 +211,14 @@ news_crawl_trigger_queue
   -> MongoDB news
 ```
 
-核心队列：
-
-| 队列 | 说明 |
+| Queue | Purpose |
 | --- | --- |
-| `news_crawl_trigger_queue` | 抓取触发任务 |
-| `news_raw_queue` | 原始新闻内容 |
-| `ai_tasks_queue` | AI 分析任务 |
-| `news_notifications_queue` | 通知任务 |
+| `news_crawl_trigger_queue` | Crawl trigger tasks |
+| `news_raw_queue` | Raw news payloads |
+| `ai_tasks_queue` | AI analysis tasks |
+| `news_notifications_queue` | Notification tasks |
 
-手动触发小批量 RSS 抓取：
+Trigger a small RSS crawl manually:
 
 ```bash
 cd backend
@@ -246,48 +238,44 @@ print("published")
 PY
 ```
 
-默认展示策略：
+Default display behavior:
 
-- 新入库新闻以 `postedAt` 为准排序，越新的新闻越靠前。
-- 首页展示聚焦近期新闻，过旧新闻不进入默认展示列表。
-- 搜索可以覆盖更宽的历史范围。
-- RSS 文章页连续 403 / 429 的来源会进入退避或隔离，避免爬虫空转和内存消耗。
+- News is sorted by `postedAt`, newest first.
+- Default home feeds focus on recent news.
+- Search can cover a wider historical range.
+- Sources with repeated article-page `403` or `429` errors enter backoff or quarantine to avoid crawler spin and memory pressure.
 
-## API 与认证
-
-认证链路：
+## API and Authentication
 
 ```text
-Frontend Login/Register
+Frontend login/register
   -> /api/auth/*
   -> User Service
   -> JWT access token / refresh token
   -> Gateway verifies Bearer token
-  -> Protected business APIs
+  -> Protected APIs
 ```
 
-Gateway 路径：
-
-| 路径 | 鉴权 | 说明 |
+| Path | Auth Required | Purpose |
 | --- | --- | --- |
-| `/api/health` | 否 | Gateway 和后端服务健康检查 |
-| `/api/auth/*` | 否 | 登录、注册、刷新 token |
-| `/api/user/*` | 是 | 用户设置和资料 |
-| `/api/users/*` | 是 | 用户相关兼容 API |
-| `/api/tracking/*` | 是 | 追踪主题和推送 |
-| `/api/news/*` | 是 | 新闻列表、详情、分类 |
-| `/api/search/*` | 是 | 搜索 API |
-| `/api/ai-search/*` | 是 | AI 搜索 API |
+| `/api/health` | No | Gateway and service health |
+| `/api/auth/*` | No | Login, register, refresh token |
+| `/api/user/*` | Yes | User settings and profile |
+| `/api/users/*` | Yes | User compatibility APIs |
+| `/api/tracking/*` | Yes | Tracking topics and pushes |
+| `/api/news/*` | Yes | News list, detail, and categories |
+| `/api/search/*` | Yes | Search APIs |
+| `/api/ai-search/*` | Yes | AI search APIs |
 
-未携带合法 Bearer token 时返回：
+Unauthorized requests return:
 
 ```json
 {"error":"Unauthorized"}
 ```
 
-## 部署
+## Deployment
 
-PM2 部署流程：
+PM2 deployment flow:
 
 ```bash
 cd /root/coregist-news
@@ -311,14 +299,14 @@ pm2 restart coregist-notification --update-env
 pm2 save
 ```
 
-反向代理建议：
+Reverse proxy recommendation:
 
 ```text
 /api/* -> http://127.0.0.1:3000/api/*
 /*     -> frontend/dist SPA fallback
 ```
 
-部署后验证：
+Post-deployment checks:
 
 ```bash
 curl https://coregist-news.com/api/health
@@ -326,11 +314,11 @@ curl -i 'https://coregist-news.com/api/news?page=1&limit=1'
 curl -i 'https://coregist-news.com/api/search/public-health'
 ```
 
-未登录访问新闻 API 返回 401 属于正常鉴权行为。登录后页面仍无数据时，优先检查 Gateway 是否转发成功、token 是否随请求发送、`news` 集合是否存在近期数据。
+A `401` response from news APIs without login is expected. After login, verify that browser requests include the Bearer token and that the Gateway forwards requests correctly.
 
-## 运维检查
+## Operations
 
-常用状态命令：
+Common diagnostics:
 
 ```bash
 pm2 list
@@ -341,16 +329,16 @@ pm2 logs coregist-ai-analysis --lines 120 --nostream
 rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
 ```
 
-新闻不更新时按顺序检查：
+If news is not updating:
 
-1. `pm2 list` 确认 Gateway、News Service、RSS worker、Content Processing、AI Analysis 在线。
-2. `rabbitmqctl list_queues` 确认队列没有大量积压。
-3. News Scraper 日志是否大量出现 403 / 429 / timeout。
-4. Content Processing / AI Analysis 是否出现 LLM 401 / 402 / 429 / timeout。
-5. MongoDB 中 `raw_news` 是否产生新记录，`news` 是否有 72 小时内记录。
-6. 登录后浏览器请求 `/api/news` 是否带 Bearer token 且返回 200。
+1. Confirm Gateway, News Service, RSS worker, Content Processing, and AI Analysis are online.
+2. Check RabbitMQ queues for backlog.
+3. Check scraper logs for repeated `403`, `429`, or timeout errors.
+4. Check AI logs for LLM `401`, `402`, `429`, or timeout errors.
+5. Verify that MongoDB has recent `raw_news` and `news` records.
+6. Confirm logged-in browser requests to `/api/news` return `200`.
 
-查看最新入库新闻：
+Check the latest stored news:
 
 ```bash
 cd backend
@@ -371,16 +359,45 @@ client.close()
 PY
 ```
 
-## 维护约定
+## Disclaimer and Compliance
 
-- 根 `README.md` 是长期项目说明入口。
-- 环境变量说明只维护 `backend/.env.example`。
-- 新增 API 时优先同步 `packages/contracts/`。
-- 前端访问后端统一走 Gateway `/api/*`。
-- Python worker 共享能力优先放在 `backend/services/shared/python/`。
-- Node 服务共享能力优先放在 `backend/services/shared/node/`。
-- 不提交 `.env`、运行时缓存、构建产物或真实密钥。
+### General Compliance
+
+- All code, tools, and features in this project are provided for learning, academic research, education, and other uses permitted by the GNU GPLv3.
+- Using this project for illegal, non-compliant, abusive, harmful, or rights-infringing activity is prohibited.
+
+### Crawler Disclaimer
+
+- The crawler features are provided only for technical learning and research.
+- Users must comply with target websites' `robots.txt`, terms of service, access policies, and applicable laws.
+- Users must not perform malicious crawling, excessive scraping, bypassing of access controls, or data abuse.
+- Any legal consequence caused by crawler use is the sole responsibility of the user.
+
+### Data Use Disclaimer
+
+- Data analysis features are provided for research, learning, and educational demonstration.
+- Analysis results are not professional, legal, financial, medical, investment, or compliance advice.
+- Users must ensure that all collected, processed, and analyzed data is lawful and compliant.
+
+### Technical Disclaimer
+
+- This project is provided "as is", without any express or implied warranty.
+- The author does not guarantee correctness, reliability, availability, security, fitness for a particular purpose, or non-infringement.
+- The author is not liable for direct, indirect, incidental, consequential, or other losses caused by use of this project.
+
+### Limitation of Responsibility
+
+- Users must understand applicable laws and regulations before using this project.
+- Users are responsible for ensuring that their use complies with local laws, regulations, website terms, and third-party rights.
+- Any consequence arising from illegal or non-compliant use is the sole responsibility of the user.
+- By using this project, you confirm that you have read, understood, agreed to, and accepted all terms in this disclaimer.
 
 ## License
 
-[LICENSE](LICENSE)
+This project is licensed under the **GNU General Public License v3.0**.
+
+- SPDX-License-Identifier: `GPL-3.0-only`
+- You may use, copy, modify, and distribute the software under the GPLv3 terms.
+- If you distribute modified versions or derivative works, you must comply with GPLv3 source code and license obligations.
+
+See [LICENSE](LICENSE) for the full license text.
