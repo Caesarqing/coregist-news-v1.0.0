@@ -285,19 +285,12 @@ git pull --ff-only origin main
 cd backend
 npm install --omit=dev
 
-pm2 restart coregist-gateway --update-env
-pm2 restart coregist-user --update-env
-pm2 restart coregist-news-service --update-env
-pm2 restart coregist-search-service --update-env
-pm2 restart coregist-scheduler --update-env
-pm2 restart coregist-news-rss-worker --update-env
-pm2 restart coregist-news-keyword-worker --update-env
-pm2 restart coregist-content-processing --update-env
-pm2 restart coregist-ai-dispatcher --update-env
-pm2 restart coregist-ai-analysis --update-env
-pm2 restart coregist-notification --update-env
+cd ..
+pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 ```
+
+`ecosystem.config.cjs` 会在启动时读取 `backend/.env` 并注入 PM2 进程环境。修改 LLM、MongoDB、RabbitMQ 或 JWT 等配置后，使用同一条 `pm2 startOrReload ecosystem.config.cjs --update-env` 重载，避免 PM2 继续保留旧环境变量。
 
 反向代理建议：
 

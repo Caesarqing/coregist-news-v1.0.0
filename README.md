@@ -285,19 +285,12 @@ git pull --ff-only origin main
 cd backend
 npm install --omit=dev
 
-pm2 restart coregist-gateway --update-env
-pm2 restart coregist-user --update-env
-pm2 restart coregist-news-service --update-env
-pm2 restart coregist-search-service --update-env
-pm2 restart coregist-scheduler --update-env
-pm2 restart coregist-news-rss-worker --update-env
-pm2 restart coregist-news-keyword-worker --update-env
-pm2 restart coregist-content-processing --update-env
-pm2 restart coregist-ai-dispatcher --update-env
-pm2 restart coregist-ai-analysis --update-env
-pm2 restart coregist-notification --update-env
+cd ..
+pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 ```
+
+`ecosystem.config.cjs` reads `backend/.env` when PM2 starts or reloads the apps, then injects those values into every service. After changing LLM, MongoDB, RabbitMQ, JWT, or other runtime configuration, reload with the same `pm2 startOrReload ecosystem.config.cjs --update-env` command so PM2 does not keep stale environment variables.
 
 Reverse proxy recommendation:
 
