@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 import pika
 from pymongo import MongoClient
 
-from services.shared.python.queue import ACTIVE_QUEUES, LEGACY_QUEUES
+from services.shared.python.queue import ACTIVE_QUEUES, LEGACY_QUEUES, QUEUE_NEWS_NOTIFICATIONS
 from services.shared.python.settings import settings
 
 
@@ -59,6 +59,32 @@ def batch_snapshot() -> list[dict]:
                 "updatedAt": batch.get("updatedAt"),
             })
         return rows
+    finally:
+        client.close()
+
+
+def push_batch_health_snapshot() -> dict:
+    client = MongoClient(settings.mongodb_uri)
+    try:
+        db = client[settings.mongodb_db_name]
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        status_rows = list(db["push_batches"].aggregate([
+            {"$match": {"createdAt": {"$gte": cutoff}}},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+        ]))
+        fake_queued_count = db["push_batches"].count_documents({
+            "createdAt": {"$gte": cutoff},
+            "notificationQueuedAt": {"$ne": None},
+            "notificationId": {"$in": ["", None]},
+        })
+        queue_rows = queue_snapshot((QUEUE_NEWS_NOTIFICATIONS,))
+        notification_queue = queue_rows[0] if queue_rows else {}
+        return {
+            "notificationQueue": notification_queue,
+            "fakeQueuedWithoutNotificationCount": fake_queued_count,
+            "statusCounts": status_rows,
+        }
     finally:
         client.close()
 
@@ -144,6 +170,7 @@ if __name__ == "__main__":
         "legacyQueues": queue_snapshot(LEGACY_QUEUES),
         "rawNews": raw_news_snapshot(),
         "llm": llm_snapshot(),
+        "pushBatchHealth": push_batch_health_snapshot(),
         "recentPushBatches": batch_snapshot(),
         "rssHealth": rss_health_snapshot(),
     }, ensure_ascii=False, default=str, indent=2))

@@ -93,6 +93,24 @@ async function listPushBatches(req, res) {
   }
 }
 
+async function getPushBatch(req, res) {
+  try {
+    const batchId = (req.params.batchId || '').toString().trim();
+    if (!batchId) return res.status(400).json({ error: '批次 ID 不能为空' });
+
+    const row = await mongoose.connection.collection('push_batches').findOne({
+      batchId,
+      userId: req.userId,
+    });
+    if (!row) return res.status(404).json({ error: '推送批次不存在' });
+
+    return res.json({ item: serializePushBatch(row) });
+  } catch (error) {
+    console.error('❌ 获取推送批次详情失败:', error);
+    return res.status(500).json({ error: '获取推送批次详情失败', details: error.message });
+  }
+}
+
 async function markRead(req, res) {
   try {
     const doc = await Notification.findOneAndUpdate(
@@ -149,6 +167,7 @@ async function registerPushToken(req, res) {
 
 module.exports = {
   authRequired,
+  getPushBatch,
   listPushBatches,
   listNotifications,
   markAllRead,

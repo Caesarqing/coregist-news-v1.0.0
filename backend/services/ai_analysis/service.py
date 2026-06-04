@@ -665,7 +665,7 @@ class AIAnalysisService:
         selected_ids = news_ids[:push_count]
         title = "新闻推送已更新"
         summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 为你找到 {len(selected_ids)} 条相关新闻。"
-        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+        notification_payload = {
             "type": "news_push",
             "user_id": batch.get("userId") or payload.get("user_id", ""),
             "title": title,
@@ -673,11 +673,20 @@ class AIAnalysisService:
             "content": summary,
             "news_ids": [str(item) for item in selected_ids],
             "push_batch_id": batch_id,
-        })
+        }
+        try:
+            self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, notification_payload)
+        except Exception as exc:
+            with mongo_collection("push_batches") as collection:
+                collection.update_one(
+                    {"batchId": batch_id},
+                    {"$set": {"status": "ready", "lastError": str(exc)[:500], "updatedAt": datetime.utcnow()}},
+                )
+            return
         with mongo_collection("push_batches") as collection:
             collection.update_one(
                 {"batchId": batch_id},
-                {"$set": {"status": "ready", "notificationQueuedAt": datetime.utcnow(), "updatedAt": datetime.utcnow()}},
+                {"$set": {"status": "ready", "lastError": "", "notificationQueuedAt": datetime.utcnow(), "updatedAt": datetime.utcnow()}},
             )
 
     @staticmethod
@@ -740,18 +749,8 @@ class AIAnalysisService:
             summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 为你找到 {len(selected_ids)} 条相关新闻。"
         else:
             summary = f"根据关键词 {', '.join(batch.get('keywords') or payload.get('keywords') or [])} 暂未找到符合条件的相关新闻。"
-        with mongo_collection("push_batches") as collection:
-            collection.update_one(
-                {"batchId": batch_id},
-                {
-                    "$set": {
-                        "status": "partial" if selected_ids else "failed",
-                        "notificationQueuedAt": datetime.utcnow(),
-                        "updatedAt": datetime.utcnow(),
-                    },
-                },
-            )
-        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+        status = "partial" if selected_ids else "failed"
+        notification_payload = {
             "type": "news_push",
             "user_id": batch.get("userId") or payload.get("user_id", ""),
             "title": "新闻推送已更新",
@@ -759,7 +758,28 @@ class AIAnalysisService:
             "content": summary,
             "news_ids": [str(item) for item in selected_ids],
             "push_batch_id": batch_id,
-        })
+        }
+        try:
+            self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, notification_payload)
+        except Exception as exc:
+            with mongo_collection("push_batches") as collection:
+                collection.update_one(
+                    {"batchId": batch_id},
+                    {"$set": {"status": status, "lastError": str(exc)[:500], "updatedAt": datetime.utcnow()}},
+                )
+            return
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch_id},
+                {
+                    "$set": {
+                        "status": status,
+                        "lastError": str(error)[:500],
+                        "notificationQueuedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
 
     def process(self, task: dict, *, publish: bool = True) -> dict:
         payload = None

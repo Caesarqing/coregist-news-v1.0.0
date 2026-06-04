@@ -149,18 +149,8 @@ class NewsScraperService:
             summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 为你找到 {len(selected_ids)} 条相关新闻。"
         else:
             summary = f"根据关键词 {', '.join(batch.get('keywords', []))} 暂未找到符合条件的相关新闻。"
-        with mongo_collection("push_batches") as collection:
-            collection.update_one(
-                {"batchId": batch.get("batchId", "")},
-                {
-                    "$set": {
-                        "status": "ready" if len(selected_ids) >= push_count else ("partial" if selected_ids else "failed"),
-                        "notificationQueuedAt": datetime.utcnow(),
-                        "updatedAt": datetime.utcnow(),
-                    },
-                },
-            )
-        self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, {
+        status = "ready" if len(selected_ids) >= push_count else ("partial" if selected_ids else "failed")
+        notification_payload = {
             "type": "news_push",
             "user_id": batch.get("userId", ""),
             "title": "新闻推送已更新",
@@ -168,7 +158,28 @@ class NewsScraperService:
             "content": summary,
             "news_ids": [str(item) for item in selected_ids],
             "push_batch_id": batch.get("batchId", ""),
-        })
+        }
+        try:
+            self.queue.publish(QUEUE_NEWS_NOTIFICATIONS, notification_payload)
+        except Exception as exc:
+            with mongo_collection("push_batches") as collection:
+                collection.update_one(
+                    {"batchId": batch.get("batchId", "")},
+                    {"$set": {"status": status, "lastError": str(exc)[:500], "updatedAt": datetime.utcnow()}},
+                )
+            return
+        with mongo_collection("push_batches") as collection:
+            collection.update_one(
+                {"batchId": batch.get("batchId", "")},
+                {
+                    "$set": {
+                        "status": status,
+                        "lastError": "",
+                        "notificationQueuedAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow(),
+                    },
+                },
+            )
 
     def _add_news_to_push_batch(
         self,

@@ -39,7 +39,12 @@ export function NotificationsPage() {
       }
     }
     if (item.newsIds.length > 0) {
-      navigate(`/home/news-push/${item.pushBatchId || item.id}/news?newsIds=${encodeURIComponent(item.newsIds.join(','))}`);
+      const params = new URLSearchParams();
+      params.set('newsIds', item.newsIds.join(','));
+      params.set('matchedCount', String(item.newsIds.length));
+      params.set('pushCount', String(item.newsIds.length));
+      params.set('status', 'ready');
+      navigate(`/home/news-push/${encodeURIComponent(item.pushBatchId || item.id)}/news?${params.toString()}`);
       return;
     }
     setItems((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, readAt: new Date().toISOString() } : entry));

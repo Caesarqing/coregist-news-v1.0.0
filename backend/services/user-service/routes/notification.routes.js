@@ -6,6 +6,7 @@ const router = express.Router();
 router.get('/', controller.authRequired, controller.listNotifications);
 router.get('/unread-count', controller.authRequired, controller.unreadCount);
 router.get('/push-batches', controller.authRequired, controller.listPushBatches);
+router.get('/push-batches/:batchId', controller.authRequired, controller.getPushBatch);
 router.post('/push-token', controller.authRequired, controller.registerPushToken);
 router.patch('/read-all', controller.authRequired, controller.markAllRead);
 router.patch('/:id/read', controller.authRequired, controller.markRead);

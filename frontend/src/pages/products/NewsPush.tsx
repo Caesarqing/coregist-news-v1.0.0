@@ -346,8 +346,7 @@ export function NewsPushPage() {
     }
   };
 
-  const openPushEntryNews = (entry: PushEntry) => {
-    const batch = getLatestBatchForEntry(entry);
+  const buildPushEntryNewsUrl = (entry: PushEntry, batch?: PushBatchStatus) => {
     const newsIds = (batch?.matchedNewsIds || []).filter(Boolean).slice(0, batch?.pushCount || entry.pushCount);
     const params = new URLSearchParams();
     params.set('keywords', entry.keywords.join(','));
@@ -356,9 +355,28 @@ export function NewsPushPage() {
     params.set('pushCount', String(batch?.pushCount || entry.pushCount));
     if (batch?.scheduledFor) params.set('scheduledFor', batch.scheduledFor);
     if (newsIds.length > 0) params.set('newsIds', newsIds.join(','));
-    navigate(
-      `/home/news-push/${entry.id}/news?${params.toString()}`
-    );
+    const routeId = encodeURIComponent(batch?.batchId || entry.id);
+    return `/home/news-push/${routeId}/news?${params.toString()}`;
+  };
+
+  const openPushEntryNews = async (entry: PushEntry) => {
+    const cachedBatch = getLatestBatchForEntry(entry);
+    if (!cachedBatch?.batchId) {
+      navigate(buildPushEntryNewsUrl(entry));
+      return;
+    }
+
+    try {
+      const result = await notificationApi.pushBatch(cachedBatch.batchId);
+      const freshBatch = result.item;
+      setPushBatchStatuses((prev) => [
+        freshBatch,
+        ...prev.filter((batch) => batch.batchId !== freshBatch.batchId),
+      ]);
+      navigate(buildPushEntryNewsUrl(entry, freshBatch));
+    } catch {
+      navigate(buildPushEntryNewsUrl(entry, cachedBatch));
+    }
   };
 
   const getLatestBatchForEntry = (entry: PushEntry) => {

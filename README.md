@@ -319,7 +319,8 @@ pm2 logs coregist-gateway --lines 80 --nostream
 pm2 logs coregist-news-rss-worker --lines 120 --nostream
 pm2 logs coregist-content-processing --lines 120 --nostream
 pm2 logs coregist-ai-analysis --lines 120 --nostream
-rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged consumers
+python3 backend/scripts/check-push-health.py
 ```
 
 If news is not updating:
@@ -330,6 +331,17 @@ If news is not updating:
 4. Check AI logs for LLM `401`, `402`, `429`, or timeout errors.
 5. Verify that MongoDB has recent `raw_news` and `news` records.
 6. Confirm logged-in browser requests to `/api/news` return `200`.
+
+If personalized pushes do not appear, check the dedicated worker chain:
+
+```bash
+pm2 status coregist-news-keyword-worker coregist-content-processing coregist-ai-analysis coregist-notification
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged consumers
+python3 backend/scripts/check-push-health.py
+python3 backend/scripts/repair-push-notification-queue.py
+```
+
+The repair script is dry-run by default. Use `--apply` only after confirming that batches have `notificationQueuedAt` but no `notificationId`.
 
 Check the latest stored news:
 

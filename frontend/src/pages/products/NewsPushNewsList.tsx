@@ -4,7 +4,7 @@ import { Card, CardContent } from '~/shared/ui/card';
 import { Button } from '~/shared/ui/button';
 import { ImageWithFallback } from '~/shared/components/ImageWithFallback';
 import { Newspaper, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
-import { newsApi, type NewsItem } from '~/api/apiClient';
+import { newsApi, notificationApi, type NewsItem, type PushBatchStatus } from '~/api/apiClient';
 import { useLanguage } from '~/contexts/LanguageContext';
 import { PageHero } from '~/shared/components/PageHero';
 import { Badge } from '~/shared/ui/badge';
@@ -24,12 +24,10 @@ export function NewsPushNewsListPage() {
   const keywordsParam = searchParams.get('keywords') || '';
   const keywords = keywordsParam ? keywordsParam.split(',') : [];
   const notificationNewsIdsParam = searchParams.get('newsIds') || '';
-  const notificationNewsIds = notificationNewsIdsParam.split(',').map((item) => item.trim()).filter(Boolean);
   const batchStatus = searchParams.get('status') || '';
-  const batchMatchedCount = Number(searchParams.get('matchedCount') || notificationNewsIds.length || 0);
+  const batchMatchedCount = Number(searchParams.get('matchedCount') || 0);
   const batchPushCount = Number(searchParams.get('pushCount') || 0);
   const scheduledFor = searchParams.get('scheduledFor') || '';
-  const isProcessingBatch = ['queued', 'processing'].includes(batchStatus);
   const heroTitle = language === 'zh-CN' ? '我的新闻' : 'My News';
   const heroDescription = keywords.length > 0
     ? (language === 'zh-CN' 
@@ -41,6 +39,12 @@ export function NewsPushNewsListPage() {
 
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [batchDetail, setBatchDetail] = useState<PushBatchStatus | null>(null);
+  const displayStatus = batchDetail?.status || batchStatus;
+  const displayMatchedCount = batchDetail?.matchedCount || batchMatchedCount;
+  const displayPushCount = batchDetail?.pushCount || batchPushCount;
+  const displayScheduledFor = batchDetail?.scheduledFor || scheduledFor;
+  const isProcessingBatch = ['queued', 'processing'].includes(displayStatus);
 
   // 转换后端数据格式
   const transformNewsItem = useCallback(
@@ -58,9 +62,21 @@ export function NewsPushNewsListPage() {
   const fetchNewsData = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (notificationNewsIds.length > 0) {
+      let newsIds = notificationNewsIdsParam.split(',').map((item) => item.trim()).filter(Boolean);
+      if (newsIds.length === 0 && id) {
+        try {
+          const result = await notificationApi.pushBatch(id);
+          const batch = result.item;
+          setBatchDetail(batch);
+          newsIds = (batch.matchedNewsIds || []).filter(Boolean).slice(0, batch.pushCount || undefined);
+        } catch {
+          setBatchDetail(null);
+        }
+      }
+
+      if (newsIds.length > 0) {
         const detailItems = await Promise.all(
-          notificationNewsIds.map((newsId) => newsApi.getNewsDetail(newsId, language).catch(() => null))
+          newsIds.map((newsId) => newsApi.getNewsDetail(newsId, language).catch(() => null))
         );
         setNewsData(detailItems.filter(Boolean).map(transformNewsItem) as NewsItem[]);
         return;
@@ -72,7 +88,7 @@ export function NewsPushNewsListPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [language, notificationNewsIdsParam, transformNewsItem]);
+  }, [id, language, notificationNewsIdsParam, transformNewsItem]);
 
   // 初始加载
   useEffect(() => {
@@ -106,17 +122,26 @@ export function NewsPushNewsListPage() {
           <Card className="border border-border mb-6">
             <CardContent className="p-4 text-sm text-muted-foreground">
               {language === 'zh-CN'
-                ? `后台正在补充本次推送新闻。当前状态：${batchStatus || 'queued'}`
-                : `This push is still collecting matching news. Current status: ${batchStatus || 'queued'}`}
+                ? `后台正在补充本次推送新闻。当前状态：${displayStatus || 'queued'}`
+                : `This push is still collecting matching news. Current status: ${displayStatus || 'queued'}`}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchNewsData}
+                disabled={isLoading}
+                className="ml-3 rounded-lg"
+              >
+                {language === 'zh-CN' ? '刷新' : 'Refresh'}
+              </Button>
             </CardContent>
           </Card>
         )}
-        {(batchStatus || batchPushCount > 0 || scheduledFor) && (
+        {(displayStatus || displayPushCount > 0 || displayScheduledFor) && (
           <Card className="border border-border mb-6">
             <CardContent className="p-4 text-sm text-muted-foreground">
               {language === 'zh-CN'
-                ? `本次推送：${batchMatchedCount}/${batchPushCount || batchMatchedCount} 条${scheduledFor ? ` · ${new Date(scheduledFor).toLocaleString('zh-CN')}` : ''}`
-                : `This push: ${batchMatchedCount}/${batchPushCount || batchMatchedCount} items${scheduledFor ? ` · ${new Date(scheduledFor).toLocaleString('en-US')}` : ''}`}
+                ? `本次推送：${displayMatchedCount}/${displayPushCount || displayMatchedCount} 条${displayScheduledFor ? ` · ${new Date(displayScheduledFor).toLocaleString('zh-CN')}` : ''}`
+                : `This push: ${displayMatchedCount}/${displayPushCount || displayMatchedCount} items${displayScheduledFor ? ` · ${new Date(displayScheduledFor).toLocaleString('en-US')}` : ''}`}
             </CardContent>
           </Card>
         )}

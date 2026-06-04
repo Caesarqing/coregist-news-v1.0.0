@@ -16,6 +16,11 @@ class FakeQueue:
         self.messages.append((queue_name, payload))
 
 
+class FailingQueue:
+    def publish(self, _queue_name, _payload):
+        raise RuntimeError("queue unavailable")
+
+
 class FakePushBatchCollection:
     def __init__(self, doc):
         self.doc = doc
@@ -31,6 +36,9 @@ class FakePushBatchCollection:
                     current.append(value)
         if "$set" in update:
             self.doc.update(update["$set"])
+        if "$unset" in update:
+            for key in update["$unset"]:
+                self.doc.pop(key, None)
 
 
 class FakeUserMapCollection:
@@ -113,6 +121,34 @@ class PushBatchFlowTest(unittest.TestCase):
         self.assertTrue(batch["notificationQueuedAt"])
         self.assertEqual(len(service.queue.messages), 1)
         self.assertEqual(service.queue.messages[0][1]["news_ids"], [str(news_id)])
+
+    def test_push_notification_publish_failure_keeps_batch_retryable(self):
+        news_id = ObjectId()
+        batch = {
+            "batchId": "batch-1",
+            "userId": "user-1",
+            "keywords": ["AI"],
+            "pushCount": 1,
+            "matchedNewsIds": [news_id],
+            "notificationId": "",
+            "notificationQueuedAt": None,
+            "createdAt": datetime.utcnow(),
+        }
+        push_batch_collection = FakePushBatchCollection(batch)
+
+        @contextmanager
+        def fake_mongo_collection(name):
+            self.assertEqual(name, "push_batches")
+            yield push_batch_collection
+
+        service = object.__new__(NewsScraperService)
+        service.queue = FailingQueue()
+        with patch("services.news_scraper.service.mongo_collection", fake_mongo_collection):
+            service._publish_push_notification_if_ready(batch=batch)
+
+        self.assertIsNone(batch["notificationQueuedAt"])
+        self.assertEqual(batch["status"], "ready")
+        self.assertIn("queue unavailable", batch["lastError"])
 
     def test_tracking_news_map_writes_topic_id_and_syncs_topic(self):
         news_id = ObjectId()

@@ -509,6 +509,10 @@ export const notificationApi = {
     return apiClient.get<{ items: PushBatchStatus[]; limit: number }>(`${API_PATHS.notifications.pushBatches}?limit=${limit}`);
   },
 
+  async pushBatch(batchId: string): Promise<{ item: PushBatchStatus }> {
+    return apiClient.get<{ item: PushBatchStatus }>(API_PATHS.notifications.pushBatch(batchId));
+  },
+
   async markRead(id: string): Promise<{ ok: boolean; item: AppNotification }> {
     return apiClient.patch<{ ok: boolean; item: AppNotification }>(API_PATHS.notifications.read(id));
   },

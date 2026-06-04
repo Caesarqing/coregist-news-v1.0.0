@@ -319,7 +319,8 @@ pm2 logs coregist-gateway --lines 80 --nostream
 pm2 logs coregist-news-rss-worker --lines 120 --nostream
 pm2 logs coregist-content-processing --lines 120 --nostream
 pm2 logs coregist-ai-analysis --lines 120 --nostream
-rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged consumers
+python3 backend/scripts/check-push-health.py
 ```
 
 新闻不更新时：
@@ -330,6 +331,17 @@ rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
 4. 检查 AI 日志是否出现 LLM `401`、`402`、`429` 或 timeout。
 5. 确认 MongoDB 中存在近期 `raw_news` 和 `news` 记录。
 6. 确认登录后的浏览器请求 `/api/news` 返回 `200`。
+
+个人新闻推送不出现时，优先检查专用 worker 链路：
+
+```bash
+pm2 status coregist-news-keyword-worker coregist-content-processing coregist-ai-analysis coregist-notification
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged consumers
+python3 backend/scripts/check-push-health.py
+python3 backend/scripts/repair-push-notification-queue.py
+```
+
+修复脚本默认只 dry-run。确认批次存在 `notificationQueuedAt` 但没有 `notificationId` 后，再使用 `--apply`。
 
 查看最新入库新闻：
 
